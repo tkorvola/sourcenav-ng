@@ -202,7 +202,8 @@ several they are listed in a pop-up where you can select one to edit."
 ;; notify the appropriate SN.
 (defun sn-after-save ()
   (if sn-minor-mode
-      (sn-send (concat "sn_parse_uptodate " (sn-tcl-quote sn-file-name)))))
+      (sn-send (concat "sn_parse_uptodate " (sn-tcl-quote sn-file-name)
+                       " 0"))))         ; Disable annoying popup.
 
 ;; This is the process filter for reading from SN.  It just tries to
 ;; read the process buffer as a lisp object; when the read succeeds,
