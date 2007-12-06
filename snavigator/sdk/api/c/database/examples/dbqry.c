@@ -38,7 +38,7 @@ MA 02111-1307, USA.
 #include <fcntl.h>
 #include <errno.h>
 
-#include "db.h"
+#include "db_185.h"
 
 int
 main(int argc, char *argv[])

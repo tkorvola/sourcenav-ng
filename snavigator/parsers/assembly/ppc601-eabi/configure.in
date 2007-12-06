@@ -64,9 +64,9 @@ AC_SUBST(TCL_LIBS)
 
 dnl Random other stuff
 
-DB_LIBDIR='$(top_builddir)/../../../../db/PORT'
+DB_LIBDIR='$(top_builddir)/../../../../db4/dist'
 AC_SUBST(DB_LIBDIR)
-DB_INCDIR='$(top_srcdir)/../../../../db/include'
+DB_INCDIR='$(top_builddir)/../../../../db4/dist'
 AC_SUBST(DB_INCDIR)
 
 AC_CHECK_HEADERS([unistd.h])

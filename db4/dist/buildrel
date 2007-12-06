@@ -36,7 +36,7 @@ cd $R && find . -name CVS | xargs rm -rf
 #
 # XXX
 # This command only builds the C/C++ API documentation and Reference Guide
-cd $R/docs_src && sh build clean && sh build |& sed '/.html$/d'
+#cd $R/docs_src && sh build clean && sh build |& sed '/.html$/d'
 
 ########################################
 # PATCH RELEASE: starting point.

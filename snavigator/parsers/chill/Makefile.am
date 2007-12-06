@@ -35,12 +35,12 @@ chbrowser_SOURCES = parser.c lexer.c common.h common.c emit.h emit.c error.c \
 			main.c symtab.h symtab.c stack.h stack.c
 
 chbrowser_LDADD = -L$(toolbox) -lsnptools \
-		$(top_builddir)/db/libdbutils.a \
+		$(top_builddir)/db4/libdbutils.a \
 		 -L$(DB_LIBDIR) -ldb $(common)/libcommon.a @LEXLIB@ \
 		$(top_builddir)/misc/libutils/libutils.a \
 		$(TCL_BUILD_LIB_SPEC) $(TCL_LIBS)
 
-chbrowser_DEPENDENCIES = $(top_builddir)/db/libdbutils.a $(DB_LIBDIR)/libdb.a \
+chbrowser_DEPENDENCIES = $(top_builddir)/db4/libdbutils.a $(DB_LIBDIR)/libdb.a \
 			$(top_builddir)/misc/libutils/libutils.a \
 			$(toolbox)/libsnptools.a $(common)/libcommon.a
 

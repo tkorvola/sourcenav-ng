@@ -32,7 +32,11 @@ __os_mkdir(dbenv, name, mode)
 #if defined(HAVE_VXWORKS)
 	RETRY_CHK((mkdir((char *)name)), ret);
 #else
+#  ifdef _WIN32
+	RETRY_CHK((mkdir(name)), ret);
+#  else /*Linux & Unix*/
 	RETRY_CHK((mkdir(name, __db_omode("rwx------"))), ret);
+#  endif
 #endif
 	if (ret != 0)
 		return (__os_posix_err(ret));

@@ -44,7 +44,7 @@ AC_DEFUN([AM_SOCKLEN_T],[
 	 done
       ])
       if test "$db_cv_socklen_t_equiv" = ""; then
-	AC_MSG_ERROR([Cannot find a type to use in place of socklen_t])
+	AC_MSG_ERROR([Cannot find a type to use in place of socklen_t. On MingW, copy files from ../mingw/ to include/])
       fi
       AC_MSG_RESULT([$db_cv_socklen_t_equiv])
       AC_DEFINE_UNQUOTED([socklen_t], [$db_cv_socklen_t_equiv],

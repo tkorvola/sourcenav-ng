@@ -24,7 +24,7 @@ AUTOMAKE_OPTIONS = cygnus
 INCLUDES = $(WINFLAGS) \
 	-I$(top_srcdir)/hyper \
 	-I$(top_srcdir)/parsers/common \
-	-I$(top_srcdir)/db \
+	-I$(top_builddir)/db4/dist \
 	-I$(top_srcdir)/misc \
 	-I$(top_srcdir)/misc/libutils \
 	$(TCLHDIR)

@@ -84,8 +84,8 @@ esac
 AC_MSG_CHECKING(if --enable-compat185 option specified)
 AC_ARG_ENABLE(compat185,
 	[AC_HELP_STRING([--enable-compat185],
-			[Build DB 1.85 compatibility API.])],
-	[db_cv_compat185="$enable_compat185"], [db_cv_compat185="no"])
+			[Build DB 1.85 compatibility API (yes).])],
+	[db_cv_compat185="$enable_compat185"], [db_cv_compat185="yes"])
 AC_MSG_RESULT($db_cv_compat185)
 
 AC_MSG_CHECKING(if --enable-cxx option specified)
@@ -139,7 +139,7 @@ fi
 AC_MSG_CHECKING(if --enable-dump185 option specified)
 AC_ARG_ENABLE(dump185,
 	[AC_HELP_STRING([--enable-dump185],
-			[Build db_dump185(1) to dump 1.85 databases.])],
+			[Build db_dump185(1) to dump 1.85 databases (no).])],
 	[db_cv_dump185="$enable_dump185"], [db_cv_dump185="no"])
 AC_MSG_RESULT($db_cv_dump185)
 

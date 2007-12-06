@@ -23,6 +23,21 @@ on. By installing into an application specific directory
 like /opt/sourcenav, these problems can be avoided.
 
 
+Source Layout:
+
+The main application code is located in the subdirectory 
+snavigator/ and is a mixture of C- and Tcl/Tk-code.
+In db/ a copy of the Berkeley DB library is located, whereas
+under tcl/, tk/, tix/ and itcl/ verified versions of those libraries
+are provided.
+The build process automatically configures and uses those
+libraries.
+
+Depending on the version of automake tools used to generate the
+kit, you may have to use the --cache-file option for the 
+configure script - see below. 
+
+
 UNIX Build:
 
 GNU tools must be on the PATH before the configure script
@@ -37,7 +52,10 @@ that the user wants to install into a non-default location
 is not owned by root, then you don't need to become root before 
 the make install step.
 
-% ./configure --prefix=/opt/sourcenav
+It is recommended to first try to configure without the --cache-file 
+argument. 
+
+% ./configure --cache-file=./config.cache --prefix=/opt/sourcenav
 % make
 (become root)
 % make install
@@ -57,7 +75,10 @@ Unzip the archive and double click on the msys shortcut to
 start the shell. You can then run the configure script in
 the normal way from inside the shell.
 
-% ./configure --prefix=/opt/sourcenav
+It is recommended to first try to configure without the --cache-file 
+argument. 
+
+% ./configure --enable-mingw=yes --cache-file=./config.cache --prefix=/opt/sourcenav
 % make
 % make install
 
