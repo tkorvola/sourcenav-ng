@@ -34,8 +34,7 @@
 (make-variable-buffer-local 'sn-minor-mode)
 (or (assoc 'sn-minor-mode minor-mode-alist)
     (setq minor-mode-alist (cons '(sn-minor-mode " SN") minor-mode-alist)))
-(setplist 'sn-minor-mode (plist-put (symbol-plist 'sn-minor-mode)
-				    'permanent-local t))
+(put 'sn-minor-mode 'permanent-local t)
 
 (defun sn-minor-mode (arg)
   "Minor mode for working with Source Navigator.
@@ -258,7 +257,7 @@ several they are listed in a pop-up where you can select one to edit."
 	      ;; This buffer belongs to the current invocation.  Close
 	      ;; down.
 	      (setq sn-process nil)
-	      (setq sn-minor-mode nil)))
+	      (sn-minor-mode 0)))
 	(setq b-list (cdr b-list)))))
   (kill-buffer (process-buffer process)))
 
@@ -284,7 +283,7 @@ several they are listed in a pop-up where you can select one to edit."
   (setq sn-process sn-current-process)
   (goto-line line)
   (forward-char column)
-  (setq sn-minor-mode t)
+  (sn-minor-mode 1)
   (setq sn-file-name partial-file)
   (add-hook 'after-save-hook 'sn-after-save nil t))
 
@@ -298,13 +297,11 @@ several they are listed in a pop-up where you can select one to edit."
       (while file-list
 	(setq file (expand-file-name (car file-list) directory))
 	(setq buffer (get-file-buffer file))
-	(if buffer
-	    (progn
-	      (set-buffer buffer)
-	      (if (not sn-minor-mode)
-		  (progn
-		    (setq sn-minor-mode t)
-		    (setq sn-process sn-current-process)))))
+	(when buffer
+          (set-buffer buffer)
+          (unless sn-minor-mode
+            (setq sn-process sn-current-process)
+            (sn-minor-mode 1)))
 	(setq file-list (cdr file-list))))))
 
 (provide 'sn)
