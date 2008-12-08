@@ -49,19 +49,6 @@ though.  This lets you access the command bindings that this mode overrides."
   (setq sn-minor-mode (if (null arg) (not sn-minor-mode)
 			(> (prefix-numeric-value arg) 0))))
 
-(defun sn-minor-mode (arg)
-  "Minor mode for working with Source Navigator.
-Adds some commands for looking up stuff in SN:
-\\{sn-keymap}
-This mode is automatically activated when files are opened by SN and cannot
-be activated for other buffers.  You can toggle it for SN-related buffers
-though.  This lets you access the command bindings that this mode overrides."
-  (interactive "P")
-  (unless sn-process
-    (error "This buffer has no Source Navigator connection"))
-  (setq sn-minor-mode (if (null arg) (not sn-minor-mode)
-			(> (prefix-numeric-value arg) 0))))
-
 ;; When we tell SN about a file, we must always send it exactly the
 ;; same name as it sent us.  So we stash the original filename here.
 (defvar sn-file-name nil)
