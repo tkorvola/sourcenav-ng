@@ -104,6 +104,23 @@ char *SN_StrDup(char*);
 
 static  DB      *db_scopes;
 
+
+/*
+ return db4 version
+ will look something like
+ Berkeley DB version Berkeley DB 4.8.30: (April  9, 2010)
+
+ we also need to do a forward declaration, because we don't
+ have access to "normal" db4 routines here (due to db185-compat mode)
+ via headers, but the final binary has access (due to linkage to db.a)
+ */
+extern char * db_version(int *, int *, int *);
+char * Paf_db_get_version(void)
+{
+	int _unused;
+	return db_version(&_unused, &_unused, &_unused);
+}
+
 /*
  * get database permission from an environment, set in the gui
  */
