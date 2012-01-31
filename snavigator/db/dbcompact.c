@@ -23,17 +23,23 @@
  dbcompact will try to optimize a db file via a call to DB->compact()
  According to the docs we need to call compact() twice to fully
  exploit the tree/page reorganization.
-*/
+
+ line protocol for communicating with SN
+ Status: Optimizing (1/32): /path/to/file1
+ Status: Optimizing (3/32): /path/to/file2
+ */
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 /* dbcompact uses the native db4 mode when talking to libdb4 */
 #include "db.h"
 
 /* use a db cache size of 8MB */
 #define COMPACT_CACHESIZE (8*1024*1024)
+#define COUNTER_SKIP_PASS(cnt) (cnt += 2)
 
 static void ci_print(DB_COMPACT *ci)
 {
@@ -44,23 +50,34 @@ static void ci_print(DB_COMPACT *ci)
 }
 
 
-static int do_compact(DB *db, DB_COMPACT *compactinfo, int flags, int pass)
+static int do_compact(DB *db, DB_COMPACT *compactinfo, int flags)
 {
 	int ret;
 	const char *filename;
 	const char *dbname;
 
         db->get_dbname(db, &filename, &dbname);
-	printf("-- starting pass %i with flags %i on %s\n", pass, flags, filename);
 	if((ret=db->compact(db, NULL, NULL, NULL, compactinfo, flags, NULL))) {
-		db->err(db, ret, "error while compacting db, exiting");
-		db->close(db, 0);
-                exit(1);
+		db->err(db, ret, "error while compacting db, next");
+                return ret;
 	}
-        ci_print(compactinfo);
-	printf("-- finished pass %i on %s\n", pass, filename);
 
 	return(ret);
+}
+
+
+static void usage()
+{
+        int _unused;
+
+	printf("dbcompact - db4 compaction utility. Released under GPLv2, no warranties\n"
+	       "Part of Source Navigator - %s\n\n"
+	       "Usage: db_compact db_file [db_file...]\n"
+	       "    -c db_cache_size        set db4's cache size, in MB (default: %i)\n",
+	       db_version(&_unused, &_unused, &_unused),
+               COMPACT_CACHESIZE/1024/1024
+	      );
+
 }
 
 
@@ -69,22 +86,37 @@ int main(int ac, char **dc)
 	DB *db;
 	DB_COMPACT compactinfo;
 
+        int option;
+
 	int notused=0, flags=0;
 	int pass=1, totalsteps=0, filenr=0;
-	char *version=NULL;
-
-	version=db_version(&notused, &notused, &notused);
-	printf("dbcompact using %s\n", version);
+        int opt_truncated_pages=0;
+        int db_cache=COMPACT_CACHESIZE;
 
 	if(ac == 1) {
-		printf("usage: db_compact db_file\n");
-                exit(2);
+                usage();
+		exit(2);
+	}
+
+
+	while((option=getopt(ac, dc, "c:h")) != EOF) {
+		switch(option) {
+		case 'c':
+			db_cache=atoi(optarg)*1024*1024;
+			break;
+
+		case '?':
+		case 'h':
+			usage();
+                        exit(0);
+		}
 	}
 
 	/* # of files * 2 = total passes to be done */
-	totalsteps=(ac-1)*2;
+	totalsteps=(ac-optind)*2;
 
-	for(filenr=1; filenr < ac; filenr++) {
+	for(filenr=optind; filenr < ac; filenr++) {
+                opt_truncated_pages=0;
 		memset(&compactinfo, 0, sizeof(compactinfo));
 
 		if(db_create(&db, NULL, 0)) {
@@ -99,19 +131,33 @@ int main(int ac, char **dc)
 
 		if(db->open(db, NULL, dc[filenr], NULL, DB_UNKNOWN, 0, 0)) {
 			printf("error on db_open with %s\n", dc[filenr]);
-			goto out;
+                        COUNTER_SKIP_PASS(pass);
+			goto next;
 		}
 
-		/* 1st pass */
-		do_compact(db, &compactinfo, DB_FREE_SPACE, pass);
+
+		/*
+		 1st pass
+                 if 1st pass fails, don't bother with the 2nd
+		 */
+		printf("Status: Compacting(%i/%i) %s\n", pass, totalsteps, dc[filenr]);
+		if(do_compact(db, &compactinfo, DB_FREE_SPACE)) {
+                        printf("FIXUP\n");
+			COUNTER_SKIP_PASS(pass);
+                        goto next;
+		}
+                opt_truncated_pages += compactinfo.compact_pages_truncated;
 
 		/* 2nd pass */
 		pass++;
-		do_compact(db, &compactinfo, DB_FREE_SPACE, pass);
+		printf("Status: Compacting(%i/%i) %s\n", pass, totalsteps, dc[filenr]);
+		do_compact(db, &compactinfo, DB_FREE_SPACE);
+		opt_truncated_pages += compactinfo.compact_pages_truncated;
 
-		db->close(db, 0);
-		printf("pass %i of %i done\n", pass, totalsteps);
 		pass++;
+	next:
+		db->close(db, 0);
+		printf("Result: %d pages truncated\n", opt_truncated_pages);
 	}
 
 	exit(0);
