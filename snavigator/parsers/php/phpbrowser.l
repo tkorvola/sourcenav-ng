@@ -59,8 +59,9 @@ typedef enum {
     SEMICOLON,     /* ';' */
     COMMA,         /* ',' */
     PERIOD,        /* '.' */
-    COLON_CHAR,    /* ':' open brace-like, or part of conditional, i.e., ?: */
-    ATSIGN_CHAR,   /* '@' function call error suppression char */
+    COLON_CHAR,    /* ':' open brace-like, label, or part of conditional, i.e., ?: */
+    ATSIGN_CHAR,   /* '@' error suppression operator for expressions */
+    BACKSLASH_CHAR,/* '\' */
 
     VARIABLE,      /* $var */
     ASSIGNMENT_OPERATOR, /* '=' */
@@ -72,13 +73,14 @@ typedef enum {
     CLASS_SCOPE_OPERATOR,   /* :: */
     CLASS_MEMBER_OPERATOR,   /* -> */
     MAPPING_OPERATOR,   /* =>  usually used in array init */
+    BACKSLASHES,    /* '\\' */
 
     SOMEWORD,          /* a sequence of text */
     KEYWORD,       /* a key sequence in this language */
     FUNCTION_KEYWORD, /* The keyword "function" */
     GLOBAL_KEYWORD, /* The keyword "global" */
     INCLUDE_KEYWORD, /* The keyword "include" */
-    CLASS_KEYWORD, /* declaration of a class */
+    CLASS_KEYWORD, /* declaration of a class or trait */
     CLASS_EXTENDS_KEYWORD, /* declaration of a derived class */
     NEW_KEYWORD, /* instantiation of a class into an object */
     ARRAY_KEYWORD, /* keyword "array" */
@@ -86,12 +88,15 @@ typedef enum {
     ABSTRACT_KEYWORD,  /* abstract class or member function  */
     TRY_KEYWORD, /* try {} catch() {} catch() {} ... */
     CATCH_KEYWORD, /* try {} catch() {} catch() {} .. .*/
+    FINALLY_KEYWORD, /* try {} catch() {} catch() {} finally {} .. .*/
     PUBLIC_KEYWORD,  /* visible declared public  */
     PROTECTED_KEYWORD,  /* visiblity declared protected */
     PRIVATE_KEYWORD,  /* visiblity declared private */
     STATIC_KEYWORD,  /* deref using class scope only */
     CONST_KEYWORD,  /* class constants only */
     CLASS_IMPLEMENTS_KEYWORD,  /* class declaring implementation */
+    GOTO_KEYWORD, /* The keyword "goto" */
+    NAMESPACE_KEYWORD, /* The keyword "namespace" */
 
     THIS_VARIABLE, /* Special class $this variable */
     PARENT_VARIABLE, /* Special class $parent variable */
@@ -167,7 +172,7 @@ static int highlight_file = 0;
 
 Token* tokens_head = NULL;
 Token* tokens_tail = NULL;
-int token_index = 0; /* current offset from original token_head */
+int token_index = 0; /* current offset from original tokens_head */
 
 static char group[] = "php";
 
@@ -301,13 +306,13 @@ int yywrap() { return 1; }
 %x PHP
 %x TOKEN
 
-ws        [ \t]
+ws         [ \t]
 wsn        [ \t\n]
-symbol        [a-zA-Z0-9_]+
+symbol     [a-zA-Z0-9_]+
 
-varname        {symbol}
+varname     {symbol}
 someword    {symbol}
-token        {symbol}
+token       {symbol}
 heredoc-id    {symbol}
 
 assignment-operators    ("+="|"-="|"*="|"/="|".="|"%="|"&="|"|="|"^="|"<<="|">>=")
@@ -319,7 +324,7 @@ any-tokens    (" "|" "{symbol}" "|" "{symbol}" "({symbol}" ")*)
 
 include-keywords    ("include"|"include_once"|"require"|"require_once")
 
-keywords    ("and"|"or"|"xor"|"as"|"break"|"case"|"cfunction"|"clone"|"continue"|"declare"|"default"|"die"|"do"|"echo"|"else"|"elseif"|"empty"|"enddeclare"|"endfor"|"endforeach"|"endif"|"endswitch"|"endwhile"|"eval"|"exit"|"false"|"final"|"for"|"foreach"|"if"|"instanceof"|"isset"|"list"|"null"|"old_function"|"print"|"return"|"switch"|"throw"|"true"|"unset"|"use"|"var"|"while"|"__FUNCTION__"|"__FILE__"|"__CLASS__"|"__LINE__")
+keywords    ("and"|"or"|"xor"|"as"|"break"|"case"|"cfunction"|"clone"|"continue"|"declare"|"default"|"die"|"do"|"echo"|"else"|"elseif"|"empty"|"enddeclare"|"endfor"|"endforeach"|"endif"|"endswitch"|"endwhile"|"eval"|"exit"|"false"|"finally"|"final"|"for"|"foreach"|"if"|"instanceof"|"insteadof"|"isset"|"list"|"null"|"old_function"|"print"|"return"|"switch"|"throw"|"true"|"unset"|"use"|"var"|"while"|"yield"|"__FUNCTION__"|"__FILE__"|"__CLASS__"|"__LINE__"|"__METHOD__"|"__DIR__"|"__NAMESPACE__"|"__TRAIT__")
 
 dq-string-token  "DOUBLE_QUOTED_STRING"
 sq-string-token  "SINGLE_QUOTED_STRING"
@@ -335,6 +340,15 @@ function-argument-tokens (" "|" "{function-argument-token}" "("COMMA "{function-
 
 variable-tokens    (" VARIABLE "|" VARIABLE "("COMMA VARIABLE ")+)
 
+namespace-newpath-a    (" BACKSLASHES SOMEWORD "|" BACKSLASHES SOMEWORD "("BACKSLASHES SOMEWORD ")+)
+namespace-newpath-b    (" BACKSLASH_CHAR SOMEWORD "|" BACKSLASH_CHAR SOMEWORD "("BACKSLASH_CHAR SOMEWORD ")+)
+namespace-newpath-c    (" SOMEWORD "|" SOMEWORD "("BACKSLASHES SOMEWORD ")+)
+namespace-newpath-d    (" SOMEWORD "|" SOMEWORD "("BACKSLASH_CHAR SOMEWORD ")+)
+namespace-newpath-any ({namespace-newpath-a}|{namespace-newpath-b}|{namespace-newpath-c}|{namespace-newpath-d})
+
+namespace-subpath-a    (" SOMEWORD BACKSLASHES "|" SOMEWORD BACKSLASHES "("SOMEWORD BACKSLASHES ")+)
+namespace-subpath-b    (" SOMEWORD BACKSLASH_CHAR "|" SOMEWORD BACKSLASH_CHAR "("SOMEWORD BACKSLASH_CHAR ")+)
+namespace-subpath-any ({namespace-subpath-a}|{namespace-subpath-b})
 
 %%
     /* Start in HTML mode */
@@ -1237,6 +1251,18 @@ variable-tokens    (" VARIABLE "|" VARIABLE "("COMMA VARIABLE ")+)
         sn_advance_column(yyleng);
 }
 
+<PHP>"trait" {
+    #if MATCH_DUMP
+    matched_pattern("trait", yytext);
+    #endif
+    append_token(CLASS_KEYWORD, yytext,
+        sn_line(),
+        sn_column(),
+        sn_line(),
+        sn_column() + yyleng);
+        sn_advance_column(yyleng); // treat 'trait' like 'class'
+}
+
 <PHP>"extends" {
     #if MATCH_DUMP
     matched_pattern("extends", yytext);
@@ -1336,6 +1362,18 @@ variable-tokens    (" VARIABLE "|" VARIABLE "("COMMA VARIABLE ")+)
         sn_advance_column(yyleng);
 }
 
+<PHP>"finally" {
+    #if MATCH_DUMP
+    matched_pattern("finally", yytext);
+    #endif
+    append_token(FINALLY_KEYWORD, yytext,
+        sn_line(),
+        sn_column(),
+        sn_line(),
+        sn_column() + yyleng);
+        sn_advance_column(yyleng);
+}
+
 <PHP>"abstract" {
     #if MATCH_DUMP
     matched_pattern("public", yytext);
@@ -1408,6 +1446,30 @@ variable-tokens    (" VARIABLE "|" VARIABLE "("COMMA VARIABLE ")+)
         sn_advance_column(yyleng);
 }
 
+<PHP>"goto" {
+    #if MATCH_DUMP
+    matched_pattern("goto", yytext);
+    #endif
+    append_token(GOTO_KEYWORD, yytext,
+        sn_line(),
+        sn_column(),
+        sn_line(),
+        sn_column() + yyleng);
+        sn_advance_column(yyleng);
+}
+
+<PHP>"namespace" {
+    #if MATCH_DUMP
+    matched_pattern("namespace", yytext);
+    #endif
+    append_token(NAMESPACE_KEYWORD, yytext,
+        sn_line(),
+        sn_column(),
+        sn_line(),
+        sn_column() + yyleng);
+        sn_advance_column(yyleng);
+}
+
 <PHP>{include-keywords} {
     #if MATCH_DUMP
     matched_pattern("{include-keywords}", yytext);
@@ -1432,6 +1494,7 @@ variable-tokens    (" VARIABLE "|" VARIABLE "("COMMA VARIABLE ")+)
         sn_column() + yyleng);
         sn_advance_column(yyleng);
 }
+
 
 <PHP>{someword} {
     #if MATCH_DUMP
@@ -1506,7 +1569,7 @@ variable-tokens    (" VARIABLE "|" VARIABLE "("COMMA VARIABLE ")+)
     #if MATCH_DUMP
     matched_pattern("\\$", yytext);
     #endif
-
+    // Is this right, pushing token SOMEWORD for \$
     append_token(SOMEWORD, yytext,
         sn_line(),
         sn_column(),
@@ -1515,6 +1578,35 @@ variable-tokens    (" VARIABLE "|" VARIABLE "("COMMA VARIABLE ")+)
 
     sn_advance_column(yyleng);
 }
+
+<PHP>"\\\\" {
+    #if MATCH_DUMP
+    matched_pattern("\\\\", yytext);
+    #endif
+
+    append_token(BACKSLASHES, yytext,
+        sn_line(),
+        sn_column(),
+        sn_line(),
+        sn_column() + yyleng);
+
+    sn_advance_column(yyleng);
+}
+
+<PHP>"\\" {
+    #if MATCH_DUMP
+    matched_pattern("\\", yytext);
+    #endif
+
+    append_token(BACKSLASH_CHAR, yytext,
+        sn_line(),
+        sn_column(),
+        sn_line(),
+        sn_column() + yyleng);
+
+    sn_advance_column(yyleng);
+}
+
 
 <PHP>. {
     #if MATCH_DUMP
@@ -1587,9 +1679,227 @@ variable-tokens    (" VARIABLE "|" VARIABLE "("COMMA VARIABLE ")+)
     sn_highlight(SN_HIGH_KEYWORD,
         tokens_head->start_line, tokens_head->start_column,
         tokens_head->end_line, tokens_head->end_column);
-        free_head_token(); /* array keyword */
-        free_head_token(); /* OPEN_PAREN */
+    free_head_token(); /* array keyword */
+    free_head_token(); /* OPEN_PAREN */
 }
+
+
+<TOKEN>"NAMESPACE_KEYWORD"{namespace-newpath-any} {
+    int pathTokenIndex;
+    int namespace_start_line;
+    int namespace_start_column;
+    int namespace_end_line;
+    int namespace_end_column;
+    LongString  pbuff;
+    char *fullPath;
+
+    #ifdef TOKEN_DEBUG
+    fprintf(tokenout, "namespace tokens %d\n", token_index);
+    fprintf(tokenout, "match text was \"%s\"\n", yytext);
+    #endif
+
+    assert(tokens_head && (tokens_head->type == NAMESPACE_KEYWORD));
+
+    sn_highlight(SN_HIGH_KEYWORD,
+        tokens_head->start_line, tokens_head->start_column,
+        tokens_head->end_line, tokens_head->end_column);
+
+    free_head_token();
+
+    pathTokenIndex = token_index;
+    namespace_start_line = tokens_head->start_line;
+    namespace_start_column = tokens_head->start_column;
+    LongStringInit(&pbuff,0);
+    for (; tokens_head && tokens_head->strval;)
+    {
+        assert((tokens_head->type == SOMEWORD) ||
+             (tokens_head->type == BACKSLASHES) ||
+             (tokens_head->type == BACKSLASH_CHAR));
+        namespace_end_line = tokens_head->end_line;
+        namespace_end_column = tokens_head->end_column;
+        pbuff.append(&pbuff, tokens_head->strval, -1);
+        free_head_token();
+        if ((tokens_head->type != SOMEWORD) &&
+             (tokens_head->type != BACKSLASHES) &&
+             (tokens_head->type != BACKSLASH_CHAR))
+            break;
+    }
+
+    if (pbuff.buf)
+        fullPath = SN_StrDup(pbuff.buf);
+
+    #ifdef TOKEN_DEBUG
+    fprintf(tokenout, "namespace '%s' declared at token %d\n", fullPath, pathTokenIndex);
+    #endif
+
+    if (fullPath && (strlen(fullPath) > 0))
+    {
+        result = sn_insert_symbol(SN_NAMESPACE_DEF, NULL, fullPath,
+            sn_current_file(),
+            namespace_start_line, namespace_start_column,
+            namespace_end_line, namespace_end_column,
+            SN_PUBLIC, NULL, NULL, NULL, NULL,
+            namespace_start_line, namespace_start_column,
+            namespace_end_line, namespace_end_column);
+        assert(result == 0);
+    }
+
+    pbuff.free(&pbuff);
+}
+
+<TOKEN>("BACKSLASHES"){namespace-subpath-any} {
+    int pathTokenIndex;
+    int namespace_start_line;
+    int namespace_start_column;
+    int namespace_end_line;
+    int namespace_end_column;
+    LongString  pbuff;
+    char *fullPath;
+
+    #ifdef TOKEN_DEBUG
+    fprintf(tokenout, "namespace ref tokens %d\n", token_index);
+    fprintf(tokenout, "match text was \"%s\"\n", yytext);
+    fprintf(tokenout, "tokens_head is \"%s\"\n", TokenTypeToString(tokens_head));
+    #endif
+
+    pathTokenIndex = token_index;
+    namespace_start_line = tokens_head->start_line;
+    namespace_start_column = tokens_head->start_column;
+    LongStringInit(&pbuff,0);
+    for (; tokens_head && tokens_head->strval;)
+    {
+        assert((tokens_head->type == SOMEWORD) ||
+             (tokens_head->type == BACKSLASHES));
+        if ((tokens_head->type == SOMEWORD) &&
+            (tokens_head->next->type != BACKSLASHES))
+            break;
+        namespace_end_line = tokens_head->end_line;
+        namespace_end_column = tokens_head->end_column;
+        pbuff.append(&pbuff, tokens_head->strval, -1);
+        free_head_token();
+    }
+
+
+    if (pbuff.buf)
+        fullPath = SN_StrDup(pbuff.buf);
+
+    #ifdef TOKEN_DEBUG
+    fprintf(tokenout, "namespace '%s' referred at token %d\n", fullPath ? fullPath : "(null)", pathTokenIndex);
+    #endif
+
+    if (fullPath && (strlen(fullPath) > 0))
+    {
+        sn_highlight(SN_HIGH,
+            namespace_start_line, namespace_start_column,
+            namespace_end_line, namespace_end_column);
+    }
+
+    pbuff.free(&pbuff);
+}
+
+<TOKEN>("BACKSLASH_CHAR"){namespace-subpath-any} {
+    int pathTokenIndex;
+    int namespace_start_line;
+    int namespace_start_column;
+    int namespace_end_line;
+    int namespace_end_column;
+    LongString  pbuff;
+    char *fullPath;
+
+    #ifdef TOKEN_DEBUG
+    fprintf(tokenout, "namespace ref tokens %d\n", token_index);
+    fprintf(tokenout, "match text was \"%s\"\n", yytext);
+    fprintf(tokenout, "tokens_head is \"%s\"\n", TokenTypeToString(tokens_head));
+    #endif
+
+    pathTokenIndex = token_index;
+    namespace_start_line = tokens_head->start_line;
+    namespace_start_column = tokens_head->start_column;
+    LongStringInit(&pbuff,0);
+    for (; tokens_head && tokens_head->strval;)
+    {
+        assert((tokens_head->type == SOMEWORD) ||
+             (tokens_head->type == BACKSLASH_CHAR));
+        if ((tokens_head->type == SOMEWORD) &&
+            (tokens_head->next->type != BACKSLASH_CHAR))
+            break;
+        namespace_end_line = tokens_head->end_line;
+        namespace_end_column = tokens_head->end_column;
+        pbuff.append(&pbuff, tokens_head->strval, -1);
+        free_head_token();
+    }
+
+
+    if (pbuff.buf)
+        fullPath = SN_StrDup(pbuff.buf);
+
+    #ifdef TOKEN_DEBUG
+    fprintf(tokenout, "namespace '%s' referred at token %d\n", fullPath ? fullPath : "(null)", pathTokenIndex);
+    #endif
+
+    if (fullPath && (strlen(fullPath) > 0))
+    {
+        sn_highlight(SN_HIGH,
+            namespace_start_line, namespace_start_column,
+            namespace_end_line, namespace_end_column);
+    }
+
+    pbuff.free(&pbuff);
+}
+
+
+<TOKEN>{namespace-subpath-any} {
+    int pathTokenIndex;
+    int namespace_start_line;
+    int namespace_start_column;
+    int namespace_end_line;
+    int namespace_end_column;
+    LongString  pbuff;
+    char *fullPath;
+
+    #ifdef TOKEN_DEBUG
+    fprintf(tokenout, "namespace ref tokens %d\n", token_index);
+    fprintf(tokenout, "match text was \"%s\"\n", yytext);
+    fprintf(tokenout, "tokens_head is \"%s\"\n", TokenTypeToString(tokens_head));
+    #endif
+
+    pathTokenIndex = token_index;
+    namespace_start_line = tokens_head->start_line;
+    namespace_start_column = tokens_head->start_column;
+    LongStringInit(&pbuff,0);
+    for (; tokens_head && tokens_head->strval;)
+    {
+        assert((tokens_head->type == SOMEWORD) ||
+             (tokens_head->type == BACKSLASHES) ||
+             (tokens_head->type == BACKSLASH_CHAR));
+        if ((tokens_head->type == SOMEWORD) &&
+            (tokens_head->next->type != BACKSLASHES) &&
+            (tokens_head->next->type != BACKSLASH_CHAR))
+            break;
+        namespace_end_line = tokens_head->end_line;
+        namespace_end_column = tokens_head->end_column;
+        pbuff.append(&pbuff, tokens_head->strval, -1);
+        free_head_token();
+    }
+
+
+    if (pbuff.buf)
+        fullPath = SN_StrDup(pbuff.buf);
+
+    #ifdef TOKEN_DEBUG
+    fprintf(tokenout, "namespace '%s' referred at token %d\n", fullPath ? fullPath : "(null)", pathTokenIndex);
+    #endif
+
+    if (fullPath && (strlen(fullPath) > 0))
+    {
+        sn_highlight(SN_HIGH,
+            namespace_start_line, namespace_start_column,
+            namespace_end_line, namespace_end_column);
+    }
+
+    pbuff.free(&pbuff);
+}
+
 
 <TOKEN>{literal-token}" MAPPING_OPERATOR" {
     int line_start, line_end, column_start, column_end;
@@ -1613,7 +1923,7 @@ variable-tokens    (" VARIABLE "|" VARIABLE "("COMMA VARIABLE ")+)
             column_start = tokens_head->start_column;
             line_end = tokens_head->end_line;
             column_end = tokens_head->end_column;
-            if (strcmp(tokens_head->strval, "parent") && strcmp(tokens_head->strval, "self"))
+            if (strcasecmp(tokens_head->strval, "parent") && strcasecmp(tokens_head->strval, "self"))
                 clsname = SN_StrDup(tokens_head->strval);
         } else if (tokens_head->type == CLASS_SCOPE_OPERATOR) {
             if ((prevToken == SOMEWORD) && clsname) {
@@ -1655,6 +1965,8 @@ variable-tokens    (" VARIABLE "|" VARIABLE "("COMMA VARIABLE ")+)
     #ifdef TOKEN_DEBUG
     fprintf(tokenout, "function at token %d\n", token_index);
     fprintf(tokenout, "match text was \"%s\"\n", yytext);
+    if (tokens_head->type != FUNCTION_KEYWORD)
+        fprintf(tokenout, "unexpected token '%s'\n", TokenTypeToString(tokens_head));
     #endif
     assert(tokens_head->type == FUNCTION_KEYWORD);
 
@@ -1795,6 +2107,15 @@ variable-tokens    (" VARIABLE "|" VARIABLE "("COMMA VARIABLE ")+)
     }
 
     push_brace(CATCH_KEYWORD);
+    free_head_token(); /* OPEN_BRACE */
+}
+
+<TOKEN>"FINALLY_KEYWORD OPEN_BRACE" {
+    sn_highlight(SN_HIGH_KEYWORD,
+        tokens_head->start_line, tokens_head->start_column,
+        tokens_head->end_line, tokens_head->end_column);
+    push_brace(FINALLY_KEYWORD);
+    free_head_token(); /* FINALLY keyword */
     free_head_token(); /* OPEN_BRACE */
 }
 
@@ -2175,11 +2496,12 @@ variable-tokens    (" VARIABLE "|" VARIABLE "("COMMA VARIABLE ")+)
         if (global_var_table == NULL) {
             global_var_table = SearchTableCreate(100, SEARCH_HASH_TABLE, FreeGlobalEntry);
         }
+        assert(global_var_table != NULL);
 
         entry.key = tokens_head->strval;
         entry.key_len = -1;
 
-        if (global_var_table->search( &global_var_table, entry ) == NULL) {
+        if (tokens_head->strval && (global_var_table->search( &global_var_table, entry ) == NULL)) {
             result = sn_insert_symbol(SN_GLOB_VAR_DEF, current_class,
                 tokens_head->strval, sn_current_file(),
                 tokens_head->start_line, tokens_head->start_column,
@@ -2245,9 +2567,6 @@ variable-tokens    (" VARIABLE "|" VARIABLE "("COMMA VARIABLE ")+)
 
     free_head_token(); /* const keyword */
 
-    if ( !current_class )
-        return;
-
     result = sn_insert_symbol(SN_ENUM_CONST_DEF,
         current_class,
         tokens_head->strval,
@@ -2266,6 +2585,39 @@ variable-tokens    (" VARIABLE "|" VARIABLE "("COMMA VARIABLE ")+)
 
     free_head_token(); /* class constant name */
     free_head_token(); /* = */
+}
+
+<TOKEN>"GOTO_KEYWORD SOMEWORD" {
+    int ref_from_scope_type;
+
+    sn_highlight(SN_HIGH_KEYWORD,
+        tokens_head->start_line, tokens_head->start_column,
+        tokens_head->end_line, tokens_head->end_column);
+
+    free_head_token(); /* free goto keyword */
+
+    #ifdef TOKEN_DEBUG
+    fprintf(tokenout, "goto label %s at token %d\n", tokens_head->strval, token_index);
+    #endif
+
+    ref_from_scope_type = from_what_scope();
+
+    result = sn_insert_xref(SN_REF_TO_SUBROUTINE,
+        ref_from_scope_type,
+        SN_REF_SCOPE_GLOBAL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        tokens_head->strval,
+        NULL, 
+        sn_current_file(),
+        tokens_head->start_line,
+        SN_REF_PASS);
+
+    assert(result == 0);
+
+    free_head_token(); /* label name */
 }
 
 <TOKEN>"THIS_VARIABLE CLASS_MEMBER_OPERATOR SOMEWORD OPEN_PAREN" {
@@ -2670,17 +3022,80 @@ variable-tokens    (" VARIABLE "|" VARIABLE "("COMMA VARIABLE ")+)
     int ref_from_scope_type;
     char *clsname;
 
-    if (strcmp(tokens_head->strval, "parent") == 0) {
-        clsname = current_parent;
-    } else if (strcmp(tokens_head->strval, "self") == 0) {
-        clsname = current_class;
-    } else {
-        clsname = tokens_head->strval;
-        /* FIXME: is there a highlight for a reference to a class name? */
-        sn_highlight(SN_HIGH_CLASSDEF,
-            tokens_head->start_line, tokens_head->start_column,
-            tokens_head->end_line, tokens_head->end_column);
-    }
+    clsname = tokens_head->strval;
+    /* FIXME: is there a highlight for a reference to a class name? */
+    sn_highlight(SN_HIGH_CLASSDEF,
+        tokens_head->start_line, tokens_head->start_column,
+        tokens_head->end_line, tokens_head->end_column);
+
+    #ifdef TOKEN_DEBUG
+    fprintf(tokenout, "direct class access at %d\n", token_index);
+    fprintf(tokenout, "match text was \"%s\"\n", yytext);
+    #endif
+
+    ref_from_scope_type = from_what_scope();
+
+    /* NOTE: we use '#' as the refclass so the GUI will point to the class def */
+    result = sn_insert_xref(SN_REF_TO_CLASS,
+        ref_from_scope_type,
+        SN_REF_SCOPE_GLOBAL,
+        current_class,
+        current_refblock,
+        NULL,
+        "#",
+        clsname,
+        NULL, 
+        sn_current_file(),
+        tokens_head->start_line,
+        SN_REF_READ);
+
+    assert(result == 0);
+
+    free_head_token(); /* REFCLASS */
+    free_head_token(); /* :: */
+}
+
+<TOKEN>"SOMEWORD COLON_CHAR" {
+    int ref_from_scope_type;
+
+    #ifdef TOKEN_DEBUG
+    fprintf(tokenout, "found label %s for goto at %d\n", tokens_head->strval, token_index);
+    #endif
+
+    ref_from_scope_type = from_what_scope();
+
+    result = sn_insert_symbol(PAF_SUBR_DEF,
+        NULL,
+        tokens_head->strval,
+        sn_current_file(),
+        tokens_head->start_line, tokens_head->start_column,
+        tokens_head->start_line, tokens_head->end_column,
+        SN_PUBLIC,
+        NULL, NULL, NULL, NULL,
+        tokens_head->start_line, tokens_head->start_column,
+        tokens_head->start_line, tokens_head->end_column);
+
+    assert(result == 0);
+
+    free_head_token(); /* label */
+    free_head_token(); /* : */
+}
+
+<TOKEN>"STATIC_KEYWORD CLASS_SCOPE_OPERATOR" {
+    /*
+    * Note: keep parsing "fuzzy" by stopping at the pattern 'classname::'
+    *  and then let other rules take over.
+    */
+    int ref_from_scope_type;
+    char *clsname;
+
+    // special case where we treat 'static' as a predefined class instead of a scope keyword
+    clsname = "static";
+    // clsname = tokens_head->strval;
+    /* FIXME: is there a highlight for a reference to a class name? */
+    sn_highlight(SN_HIGH_CLASSDEF,
+        tokens_head->start_line, tokens_head->start_column,
+        tokens_head->end_line, tokens_head->end_column);
 
     #ifdef TOKEN_DEBUG
     fprintf(tokenout, "direct class access at %d\n", token_index);
@@ -2907,7 +3322,9 @@ variable-tokens    (" VARIABLE "|" VARIABLE "("COMMA VARIABLE ")+)
 
     #ifdef TOKEN_DEBUG
     fprintf(tokenout, "ate token %d %s", token_index,
-    TokenTypeToString(tokens_head));
+        TokenTypeToString(tokens_head));
+    if ( !tokens_head )
+        return;
     if (tokens_head->strval) {
         fprintf(tokenout, " \"%s\"", tokens_head->strval);
     }
@@ -2927,12 +3344,15 @@ variable-tokens    (" VARIABLE "|" VARIABLE "("COMMA VARIABLE ")+)
             case ARRAY_KEYWORD:
             case TRY_KEYWORD:
             case CATCH_KEYWORD:
+            case FINALLY_KEYWORD:
             case PUBLIC_KEYWORD:
             case ABSTRACT_KEYWORD:
             case PROTECTED_KEYWORD:
             case PRIVATE_KEYWORD:
             case STATIC_KEYWORD:
             case CONST_KEYWORD:
+            case GOTO_KEYWORD:
+            case NAMESPACE_KEYWORD:
             case KEYWORD:
                 type = SN_HIGH_KEYWORD;
                 break;
@@ -3003,6 +3423,7 @@ variable-tokens    (" VARIABLE "|" VARIABLE "("COMMA VARIABLE ")+)
     YY_BUFFER_STATE yybs;
 
     #ifdef TOKEN_DEBUG
+    if (tokenout == NULL)
     tokenout = fopen("tokens.out", "a");
     fprintf(tokenout, "reached EOF in lex input buffer in mode %s\n", modestring());
     #endif
@@ -3367,6 +3788,8 @@ void push_function()
         n->next = function_nest_head;
         function_nest_head = n;
     }
+    current_function_args = NULL;
+    current_function = NULL;
 }
 
 void pop_function()
@@ -3424,6 +3847,8 @@ int from_what_scope()
 */
 char * TokenTypeToString(Token *tok)
 {
+    if (!tok)
+        return "NULL TOKEN";
     switch(tok->type)
     {
         case OPEN_PAREN:
@@ -3446,6 +3871,10 @@ char * TokenTypeToString(Token *tok)
             return "PERIOD";
         case COLON_CHAR:
             return "COLON_CHAR";
+        case BACKSLASHES:
+            return "BACKSLASHES";
+        case BACKSLASH_CHAR:
+            return "BACKSLASH_CHAR";
         case ATSIGN_CHAR:
             return "ATSIGN_CHAR";
         case VARIABLE:
@@ -3504,6 +3933,8 @@ char * TokenTypeToString(Token *tok)
             return "TRY_KEYWORD";
         case CATCH_KEYWORD:
             return "CATCH_KEYWORD";
+        case FINALLY_KEYWORD:
+            return "FINALLY_KEYWORD";
         case ABSTRACT_KEYWORD:
             return "ABSTRACT_KEYWORD";
         case PUBLIC_KEYWORD:
@@ -3516,6 +3947,10 @@ char * TokenTypeToString(Token *tok)
             return "STATIC_KEYWORD";
         case CONST_KEYWORD:
             return "CONST_KEYWORD";
+        case GOTO_KEYWORD:
+            return "GOTO_KEYWORD";
+        case NAMESPACE_KEYWORD:
+            return "NAMESPACE_KEYWORD";
         case UNKNOWN_TOKEN:
             return "UNKNOWN_TOKEN";
         case COMMENT_TOKEN:
@@ -3523,7 +3958,7 @@ char * TokenTypeToString(Token *tok)
         case HTML_TOKEN:
             return "HTML_TOKEN";
         default:
-            return "TOKEN_NOT_MATCHED";
+            return "NONAME_TOKEN";
     }
 }
 
@@ -3979,6 +4414,11 @@ main(int argc, char *argv[])
         entry.flag = SEARCH_DUP_KEY; /* add copy of entry.key */
         super_global_var_table->add( &super_global_var_table, entry );
     }
+
+    #ifdef TOKEN_DEBUG
+    if (tokenout == NULL)
+        tokenout = fopen("tokens.out", "a");
+    #endif
 
     return sn_main(argc, argv, group, &yyin, yylex, reset);
 }
