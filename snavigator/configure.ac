@@ -108,6 +108,8 @@ do
     esac
 done
 
+AC_CONFIG_SUBDIRS([parsers/clang])
+
 dnl The address to send bug reports to.
 AC_ARG_ENABLE(bug-address, [  --enable-bug-address    Specify a non-default address to send bug reports to],
 BUG_ADDRESS=$enableval,)
