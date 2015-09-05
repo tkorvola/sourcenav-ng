@@ -1,4 +1,4 @@
-AUTOMAKE_OPTIONS = cygnus
+AUTOMAKE_OPTIONS = foreign
 
 ## Process this file with automake to create Makefile.in.
 

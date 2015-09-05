@@ -1,8 +1,8 @@
 dnl Process this file with autoconf to produce configure.
 
-AC_INIT
+AC_INIT(libgui, 0.0)
 AC_CONFIG_SRCDIR([src/subcommand.h])
-AM_INIT_AUTOMAKE(libgui, 0.0)
+AM_INIT_AUTOMAKE
 AM_CONFIG_HEADER(config.h)
 AM_MAINTAINER_MODE
 

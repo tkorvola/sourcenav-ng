@@ -1,4 +1,4 @@
-AUTOMAKE_OPTIONS = cygnus
+AUTOMAKE_OPTIONS = foreign
 DEMOS_TO_INSTALL = asm c++ cobol fortran java
 
 ## Process this file with automake to create Makefile.in.

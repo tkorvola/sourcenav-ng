@@ -1,12 +1,12 @@
 dnl Process this file with autoconf to produce a configure script.
 
 dnl Initialization.
-AC_INIT
+AC_INIT(sourcenavigator,NG4.5)
 AC_CONFIG_SRCDIR([hyper/sninit.c])
 AC_PREREQ(2.61)
 AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_AUX_DIR(..)
-AM_INIT_AUTOMAKE(sourcenavigator,NG4.5)
+AM_INIT_AUTOMAKE
 AM_MAINTAINER_MODE
 
 # The combination of Cygwin, autoconf 2.13. and cl from VC++
