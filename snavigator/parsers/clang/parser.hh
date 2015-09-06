@@ -1,12 +1,19 @@
 #include <cstdio>
+#include <memory>
 
 namespace cppbrowser {
-  class parser
+  class Parser_impl;
+
+  class Parser
   {
   public:
-    FILE *in;
+    Parser();
+    virtual ~Parser();
 
-    int parse();
+    int parse(const char *filename);
     void reset();
+
+  private:
+    std::unique_ptr<Parser_impl> impl;
   };
 }
