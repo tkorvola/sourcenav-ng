@@ -1,3 +1,6 @@
+#ifndef PARSER_HH_
+#define PARSER_HH_
+
 #include <cstdio>
 #include <memory>
 
@@ -17,3 +20,5 @@ namespace cppbrowser {
     std::unique_ptr<Parser_impl> impl;
   };
 }
+
+#endif
