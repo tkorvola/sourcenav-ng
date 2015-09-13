@@ -37,14 +37,15 @@ public:
     ci.setTarget(TargetInfo::CreateTargetInfo(ci.getDiagnostics(), to));
 
     HeaderSearchOptions &hso = ci.getHeaderSearchOpts();
+    hso.UseStandardSystemIncludes = hso.UseStandardCXXIncludes
+      = hso.UseBuiltinIncludes = hso.Verbose = 1;
     for (const char *dir = sn_includepath_first();
 	 dir; dir = sn_includepath_next())
       hso.AddPath(dir, clang::frontend::Angled, false, false);
   }
 };
 
-cppbrowser::Parser::Parser():
-  impl(new Parser_impl)
+cppbrowser::Parser::Parser()
 {}
 
 cppbrowser::Parser::~Parser()
@@ -56,10 +57,18 @@ namespace {
   {
   public:
     //TODO
+
+    bool VisitCXXMethodDecl(CXXMethodDecl *f) {
+      int type = (f->isThisDeclarationADefinition()
+		  ? SN_MBR_FUNC_DEF : SN_MBR_FUNC_DCL);
+      string id = f->getNameInfo().getAsString();
+      cout << "meth" << type << id << endl;
+    }
+
     bool VisitFunctionDecl(FunctionDecl *f) {
       int type = f->isThisDeclarationADefinition() ? SN_FUNC_DEF : SN_FUNC_DCL;
       string id = f->getNameInfo().getAsString();
-      cout << type << id << endl;
+      cout << "fun" << type << id << endl;
     }
   };
 
@@ -91,11 +100,14 @@ namespace {
 int
 cppbrowser::Parser::parse(const char *filename)
 {
+  if (!impl)
+    impl.reset(new Parser_impl);
   CompilerInstance &ci = impl->ci;
   ci.createSourceManager(ci.getFileManager());
   SourceManager &sm = ci.getSourceManager();
   sm.setMainFileID(sm.createFileID(ci.getFileManager().getFile(filename),
 				   SourceLocation(), SrcMgr::C_User));
+  ci.getLangOpts().CPlusPlus = 1;
   // Or maybe TU_Prefix for headers?
   ci.createPreprocessor(clang::TU_Complete);
   Preprocessor &pp = ci.getPreprocessor();
@@ -104,6 +116,8 @@ cppbrowser::Parser::parse(const char *filename)
   ci.createASTContext();
   ci.getDiagnosticClient().BeginSourceFile(ci.getLangOpts(), &pp);
   ParseAST(pp, &ci.getASTConsumer(), ci.getASTContext());
+  ci.createDiagnostics();
+  impl->buf.FlushDiagnostics(ci.getDiagnostics());
 }
 
 void
