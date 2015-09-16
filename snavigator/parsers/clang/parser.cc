@@ -25,7 +25,9 @@ using namespace cppbrowser;
 
 static const char *builtin_includes[] = {
   "/usr/local/include",
+  "/usr/include/x86_64-linux-gnu/c++/4.9",
   "/usr/include/c++/4.9",
+  "/usr/include/x86_64-linux-gnu",
   "/usr/include",
   0
 };
@@ -47,7 +49,7 @@ public:
     hso.UseStandardSystemIncludes = hso.UseStandardCXXIncludes
       = hso.UseBuiltinIncludes = hso.Verbose = 1;
     for (const char **pdir = builtin_includes; *pdir; ++pdir)
-      hso.AddPath(*pdir, clang::frontend::Angled, false, false);
+      hso.AddPath(*pdir, clang::frontend::System, false, false);
     for (const char *dir = sn_includepath_first();
 	 dir; dir = sn_includepath_next())
       hso.AddPath(dir, clang::frontend::Angled, false, false);
@@ -60,36 +62,72 @@ cppbrowser::Parser::Parser()
 cppbrowser::Parser::~Parser()
 {}
 
+
+static inline char *
+unsafe_cstr(const string &str)
+{
+  return const_cast<char *>(str.c_str());
+}
+
+
 namespace {
   class Sn_ast_visitor:
   public RecursiveASTVisitor<Sn_ast_visitor>
   {
   public:
-    Sn_ast_visitor(const ASTContext &ctr): ctx(ctx) {}
+    Sn_ast_visitor(const Parser_impl &ctx): ctx(ctx) {}
 
-    //TODO
+    //TODO 
 
-    bool
-    VisitFunctionDecl(FunctionDecl *f)
-    {
-      CXXMethodDecl *meth = dynamic_cast<CXXMethodDecl *>(f);
-      int type = (f->isThisDeclarationADefinition()
-		  ? (meth ? SN_MBR_FUNC_DEF : SN_FUNC_DEF)
-		  : (meth ? SN_MBR_FUNC_DCL : SN_FUNC_DCL));
-      string id = f->getNameInfo().getAsString();
-      cout << (meth ? "mf" : "fun") << type << id << endl;
-      return true;
-    }
+    bool VisitFunctionDecl(FunctionDecl *);
 
   private:
-    const ASTContext &ctx;
+    const Parser_impl &ctx;
   };
+
+  bool
+  Sn_ast_visitor::VisitFunctionDecl(FunctionDecl *f)
+  {
+    DeclarationNameInfo ni = f->getNameInfo();
+    const SourceManager &sm = ctx.ci.getSourceManager();
+    if (!sm.isInMainFile(ni.getLoc()))
+      return true;
+    CXXMethodDecl *meth = dynamic_cast<CXXMethodDecl *>(f);
+    bool def = f->isThisDeclarationADefinition();
+    int type;
+    string cls;
+    //TODO
+    unsigned attr = 0;
+    string argtypes, argnames, rettype;
+    if (meth) {
+      type =  def ? SN_MBR_FUNC_DEF : SN_MBR_FUNC_DCL;
+      cls = meth->getParent()->getNameAsString();
+    } else
+      type = def ? SN_FUNC_DEF : SN_FUNC_DCL;
+    string id = ni.getAsString();
+    string fname = sm.getFilename(ni.getLoc());
+    SourceLocation
+      begin = ni.getSourceRange().getBegin(),
+      end = ni.getSourceRange().getEnd();
+    unsigned
+      begin_line = sm.getExpansionLineNumber(begin),
+      begin_col = sm.getExpansionColumnNumber(begin),
+      end_line = sm.getExpansionLineNumber(end),
+      end_col = sm.getExpansionColumnNumber(end);
+    sn_insert_symbol(
+      type, (meth ? unsafe_cstr(cls) : 0), unsafe_cstr(id), 
+      unsafe_cstr(fname), begin_line, begin_col, end_line, end_col, attr,
+      unsafe_cstr(rettype), unsafe_cstr(argtypes), unsafe_cstr(argnames),
+      0, begin_line, begin_col, end_line, end_col);
+    return true;
+  }
+
 
   class Sn_ast_consumer:
   public ASTConsumer
   {
   public:
-    Sn_ast_consumer(const ASTContext &ctx): vis(ctx) {}
+    Sn_ast_consumer(const Parser_impl &ctx): vis(ctx) {}
 
 #if 1
     // Process as we read.
@@ -131,7 +169,7 @@ cppbrowser::Parser::parse(const char *filename)
   Preprocessor &pp = ci.getPreprocessor();
   ci.getPreprocessorOpts().UsePredefines = true;
   ci.createASTContext();
-  ci.setASTConsumer(new Sn_ast_consumer(ci.getASTContext()));
+  ci.setASTConsumer(new Sn_ast_consumer(*impl));
   ci.getDiagnosticClient().BeginSourceFile(ci.getLangOpts(), &pp);
   ParseAST(pp, &ci.getASTConsumer(), ci.getASTContext());
   ci.createDiagnostics();
