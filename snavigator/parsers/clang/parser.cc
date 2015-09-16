@@ -23,6 +23,13 @@ using namespace clang;
 
 using namespace cppbrowser;
 
+static const char *builtin_includes[] = {
+  "/usr/local/include",
+  "/usr/include/c++/4.9",
+  "/usr/include",
+  0
+};
+
 class cppbrowser::Parser_impl
 {
 public:
@@ -39,6 +46,8 @@ public:
     HeaderSearchOptions &hso = ci.getHeaderSearchOpts();
     hso.UseStandardSystemIncludes = hso.UseStandardCXXIncludes
       = hso.UseBuiltinIncludes = hso.Verbose = 1;
+    for (const char **pdir = builtin_includes; *pdir; ++pdir)
+      hso.AddPath(*pdir, clang::frontend::Angled, false, false);
     for (const char *dir = sn_includepath_first();
 	 dir; dir = sn_includepath_next())
       hso.AddPath(dir, clang::frontend::Angled, false, false);
@@ -52,34 +61,41 @@ cppbrowser::Parser::~Parser()
 {}
 
 namespace {
-  class SN_AST_visitor:
-  public RecursiveASTVisitor<SN_AST_visitor>
+  class Sn_ast_visitor:
+  public RecursiveASTVisitor<Sn_ast_visitor>
   {
   public:
+    Sn_ast_visitor(const ASTContext &ctr): ctx(ctx) {}
+
     //TODO
 
-    bool VisitCXXMethodDecl(CXXMethodDecl *f) {
+    bool
+    VisitFunctionDecl(FunctionDecl *f)
+    {
+      CXXMethodDecl *meth = dynamic_cast<CXXMethodDecl *>(f);
       int type = (f->isThisDeclarationADefinition()
-		  ? SN_MBR_FUNC_DEF : SN_MBR_FUNC_DCL);
+		  ? (meth ? SN_MBR_FUNC_DEF : SN_FUNC_DEF)
+		  : (meth ? SN_MBR_FUNC_DCL : SN_FUNC_DCL));
       string id = f->getNameInfo().getAsString();
-      cout << "meth" << type << id << endl;
+      cout << (meth ? "mf" : "fun") << type << id << endl;
+      return true;
     }
 
-    bool VisitFunctionDecl(FunctionDecl *f) {
-      int type = f->isThisDeclarationADefinition() ? SN_FUNC_DEF : SN_FUNC_DCL;
-      string id = f->getNameInfo().getAsString();
-      cout << "fun" << type << id << endl;
-    }
+  private:
+    const ASTContext &ctx;
   };
 
-  class SN_AST_consumer:
+  class Sn_ast_consumer:
   public ASTConsumer
   {
   public:
+    Sn_ast_consumer(const ASTContext &ctx): vis(ctx) {}
 
 #if 1
     // Process as we read.
-    bool HandleTopLevelDecl(DeclGroupRef group) override {
+    bool
+    HandleTopLevelDecl(DeclGroupRef group) override
+    {
       for (DeclGroupRef::iterator d = group.begin();
 	   d != group.end(); ++d)
 	vis.TraverseDecl(*d);
@@ -87,13 +103,15 @@ namespace {
     }
 #else
     // Process after the whole translation unit has been read.
-    void HandleTranslationUnit(ASTContext &ctx) override {
+    void
+    HandleTranslationUnit(ASTContext &ctx) override
+    {
       vis.TraverseDecl(ctx.getTranslationUnitDecl());
     }
 #endif
 
   private:
-    SN_AST_visitor vis;
+    Sn_ast_visitor vis;
   };
 }
 
@@ -112,8 +130,8 @@ cppbrowser::Parser::parse(const char *filename)
   ci.createPreprocessor(clang::TU_Complete);
   Preprocessor &pp = ci.getPreprocessor();
   ci.getPreprocessorOpts().UsePredefines = true;
-  ci.setASTConsumer(new SN_AST_consumer);
   ci.createASTContext();
+  ci.setASTConsumer(new Sn_ast_consumer(ci.getASTContext()));
   ci.getDiagnosticClient().BeginSourceFile(ci.getLangOpts(), &pp);
   ParseAST(pp, &ci.getASTConsumer(), ci.getASTContext());
   ci.createDiagnostics();
