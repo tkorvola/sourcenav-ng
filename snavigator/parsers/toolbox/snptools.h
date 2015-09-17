@@ -203,6 +203,12 @@ char * sn_includepath_next();
 void * sn_getopt(enum sn_options);
 
 /*
+ * Print a help message describing the command line options
+ * that are parsed by sn_process_options.
+ */
+void sn_parser_help();
+  
+/*
  * Make the parser exit due to some error condition.
  */
 void sn_exit();

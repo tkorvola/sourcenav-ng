@@ -1,6 +1,8 @@
 #include <memory>
 #include <iostream>
 #include <string>
+#include <vector>
+#include <cstdio>
 
 #include <llvm/Support/Host.h>
 #include <clang/Basic/TargetInfo.h>
@@ -32,9 +34,11 @@ static const char *builtin_includes[] = {
   0
 };
 
-class cppbrowser::Parser_impl
-{
+class cppbrowser::Parser_impl {
 public:
+  vector<string> files;
+  vector<string> incpath;
+
   CompilerInstance ci;
   TextDiagnosticBuffer buf;
 
@@ -50,18 +54,45 @@ public:
       = hso.UseBuiltinIncludes = hso.Verbose = 1;
     for (const char **pdir = builtin_includes; *pdir; ++pdir)
       hso.AddPath(*pdir, clang::frontend::System, false, false);
-    for (const char *dir = sn_includepath_first();
-	 dir; dir = sn_includepath_next())
-      hso.AddPath(dir, clang::frontend::Angled, false, false);
   }
+
+  void parse(const char *filename);
 };
 
-cppbrowser::Parser::Parser()
+cppbrowser::Parser::Parser():
+  impl(new Parser_impl)
 {}
 
 cppbrowser::Parser::~Parser()
 {}
 
+void
+cppbrowser::Parser::add_file(string &&f)
+{
+  impl->files.push_back(f);
+}
+
+void
+cppbrowser::Parser::add_incdir(string &&dir)
+{
+  impl->ci.getHeaderSearchOpts().AddPath(
+    dir, clang::frontend::Angled, false, false);
+}
+
+int
+cppbrowser::Parser::parse_all()
+{
+  for (auto f = impl->files.begin(); f != impl->files.end(); ++f) {
+    FILE *foo = 0;
+    if (!sn_register_filename(&foo, const_cast<char *>(f->c_str())))
+      fclose(foo);
+    impl->parse(f->c_str());
+  }
+  int nerr = impl->buf.err_end() - impl->buf.err_begin();
+  impl->ci.createDiagnostics();
+  impl->buf.FlushDiagnostics(impl->ci.getDiagnostics());
+  return nerr;
+}
 
 static inline char *
 unsafe_cstr(const string &str)
@@ -153,12 +184,10 @@ namespace {
   };
 }
 
-int
-cppbrowser::Parser::parse(const char *filename)
+
+void
+Parser_impl::parse(const char *filename)
 {
-  if (!impl)
-    impl.reset(new Parser_impl);
-  CompilerInstance &ci = impl->ci;
   ci.createSourceManager(ci.getFileManager());
   SourceManager &sm = ci.getSourceManager();
   sm.setMainFileID(sm.createFileID(ci.getFileManager().getFile(filename),
@@ -169,15 +198,7 @@ cppbrowser::Parser::parse(const char *filename)
   Preprocessor &pp = ci.getPreprocessor();
   ci.getPreprocessorOpts().UsePredefines = true;
   ci.createASTContext();
-  ci.setASTConsumer(new Sn_ast_consumer(*impl));
+  ci.setASTConsumer(new Sn_ast_consumer(*this));
   ci.getDiagnosticClient().BeginSourceFile(ci.getLangOpts(), &pp);
   ParseAST(pp, &ci.getASTConsumer(), ci.getASTContext());
-  ci.createDiagnostics();
-  impl->buf.FlushDiagnostics(ci.getDiagnostics());
-}
-
-void
-cppbrowser::Parser::reset()
-{
-  //TODO
 }

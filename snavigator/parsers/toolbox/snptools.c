@@ -148,7 +148,7 @@ void sn_panic()
  
  made from the string "I:n:s:hy:g:x:i:luB:e:tCrDS:O:T:" found in sn_process_options()
  */
-static void sn_parser_help()
+void sn_parser_help()
 {
 	sn_error("Source Navigator - generic parser options:\n" \
 		 "-C          treat as C++\n" \
