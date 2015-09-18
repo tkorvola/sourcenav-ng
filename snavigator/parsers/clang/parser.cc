@@ -5,14 +5,16 @@
 #include <cstdio>
 
 #include <llvm/Support/Host.h>
+#include <llvm/Support/raw_ostream.h>
 #include <clang/Basic/TargetInfo.h>
 #include <clang/Frontend/CompilerInstance.h>
 #include <clang/Frontend/TextDiagnosticBuffer.h>
-#include <clang/Lex/HeaderSearch.h>
+#include <clang/Frontend/TextDiagnosticPrinter.h>
 #include <clang/AST/RecursiveASTVisitor.h>
 #include <clang/AST/ASTConsumer.h>
 #include <clang/AST/ASTContext.h>
-#include <clang/Parse/ParseAST.h>
+#include <clang/Tooling/CompilationDatabase.h>
+#include <clang/Tooling/Tooling.h>
 
 extern "C" {
 #include "snptools.h"
@@ -22,41 +24,16 @@ extern "C" {
 
 using namespace std;
 using namespace clang;
+using namespace clang::tooling;
 
 using namespace cppbrowser;
-
-static const char *builtin_includes[] = {
-  "/usr/local/include",
-  "/usr/include/x86_64-linux-gnu/c++/4.9",
-  "/usr/include/c++/4.9",
-  "/usr/include/x86_64-linux-gnu",
-  "/usr/include",
-  0
-};
 
 class cppbrowser::Parser_impl {
 public:
   vector<string> files;
-  vector<string> incpath;
+  vector<string> args;
 
-  CompilerInstance ci;
   TextDiagnosticBuffer buf;
-
-  Parser_impl() {
-    ci.createDiagnostics(&buf, false);
-    ci.createFileManager();
-    shared_ptr<TargetOptions> to = make_shared<TargetOptions>();
-    to->Triple = llvm::sys::getDefaultTargetTriple();
-    ci.setTarget(TargetInfo::CreateTargetInfo(ci.getDiagnostics(), to));
-
-    HeaderSearchOptions &hso = ci.getHeaderSearchOpts();
-    hso.UseStandardSystemIncludes = hso.UseStandardCXXIncludes
-      = hso.UseBuiltinIncludes = hso.Verbose = 1;
-    for (const char **pdir = builtin_includes; *pdir; ++pdir)
-      hso.AddPath(*pdir, clang::frontend::System, false, false);
-  }
-
-  void parse(const char *filename);
 };
 
 cppbrowser::Parser::Parser():
@@ -75,23 +52,7 @@ cppbrowser::Parser::add_file(string &&f)
 void
 cppbrowser::Parser::add_incdir(string &&dir)
 {
-  impl->ci.getHeaderSearchOpts().AddPath(
-    dir, clang::frontend::Angled, false, false);
-}
-
-int
-cppbrowser::Parser::parse_all()
-{
-  for (auto f = impl->files.begin(); f != impl->files.end(); ++f) {
-    FILE *foo = 0;
-    if (!sn_register_filename(&foo, const_cast<char *>(f->c_str())))
-      fclose(foo);
-    impl->parse(f->c_str());
-  }
-  int nerr = impl->buf.err_end() - impl->buf.err_begin();
-  impl->ci.createDiagnostics();
-  impl->buf.FlushDiagnostics(impl->ci.getDiagnostics());
-  return nerr;
+  impl->args.push_back("-I" + dir);
 }
 
 static inline char *
@@ -106,21 +67,21 @@ namespace {
   public RecursiveASTVisitor<Sn_ast_visitor>
   {
   public:
-    Sn_ast_visitor(const Parser_impl &ctx): ctx(ctx) {}
+    Sn_ast_visitor(CompilerInstance &ci): ci(ci) {}
 
     //TODO 
 
     bool VisitFunctionDecl(FunctionDecl *);
 
   private:
-    const Parser_impl &ctx;
+    const CompilerInstance &ci;
   };
 
   bool
   Sn_ast_visitor::VisitFunctionDecl(FunctionDecl *f)
   {
     DeclarationNameInfo ni = f->getNameInfo();
-    const SourceManager &sm = ctx.ci.getSourceManager();
+    const SourceManager &sm = ci.getSourceManager();
     if (!sm.isInMainFile(ni.getLoc()))
       return true;
     CXXMethodDecl *meth = dynamic_cast<CXXMethodDecl *>(f);
@@ -153,12 +114,11 @@ namespace {
     return true;
   }
 
-
   class Sn_ast_consumer:
   public ASTConsumer
   {
   public:
-    Sn_ast_consumer(const Parser_impl &ctx): vis(ctx) {}
+    Sn_ast_consumer(CompilerInstance &ci): vis(ci) {}
 
 #if 1
     // Process as we read.
@@ -182,23 +142,36 @@ namespace {
   private:
     Sn_ast_visitor vis;
   };
+
+  class Sn_action:
+  public ASTFrontendAction
+  {
+  public:
+    bool BeginSourceFileAction(CompilerInstance &ci, StringRef f) override {
+      FILE *foo = 0;
+      if (!sn_register_filename(&foo,
+				const_cast<char *>(((string)f).c_str())))
+	fclose(foo);
+      return true;
+    }
+
+    ASTConsumer *
+    CreateASTConsumer(CompilerInstance &ci, StringRef file) override {
+      return new Sn_ast_consumer(ci);
+    }
+  };
 }
 
-
-void
-Parser_impl::parse(const char *filename)
+int
+cppbrowser::Parser::parse_all()
 {
-  ci.createSourceManager(ci.getFileManager());
-  SourceManager &sm = ci.getSourceManager();
-  sm.setMainFileID(sm.createFileID(ci.getFileManager().getFile(filename),
-				   SourceLocation(), SrcMgr::C_User));
-  ci.getLangOpts().CPlusPlus = 1;
-  // Or maybe TU_Prefix for headers?
-  ci.createPreprocessor(clang::TU_Complete);
-  Preprocessor &pp = ci.getPreprocessor();
-  ci.getPreprocessorOpts().UsePredefines = true;
-  ci.createASTContext();
-  ci.setASTConsumer(new Sn_ast_consumer(*this));
-  ci.getDiagnosticClient().BeginSourceFile(ci.getLangOpts(), &pp);
-  ParseAST(pp, &ci.getASTConsumer(), ci.getASTContext());
+  FixedCompilationDatabase cdb(".", impl->args);
+  ClangTool tool(cdb, impl->files);
+  DiagnosticOptions dopt;
+  tool.setDiagnosticConsumer(&impl->buf);
+  unique_ptr<FrontendActionFactory>
+    faf = newFrontendActionFactory<Sn_action>();
+  tool.run(faf.get());
+  int nerr = impl->buf.err_end() - impl->buf.err_begin();
+  return nerr;
 }
