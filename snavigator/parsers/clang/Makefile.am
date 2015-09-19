@@ -20,7 +20,7 @@ CLANG_LIBS = -lclangTooling -lclangFrontendTool -lclangFrontend \
 	-lclangRewriteFrontend -lclangEdit -lclangAST -lclangLex -lclangBasic
 
 cppbrowser_SOURCES = main.cc parser.cc
-cppbrowser_CXXFLAGS = $(LLVM_CXXFLAGS)
+cppbrowser_CXXFLAGS = -std=c++11 $(LLVM_CXXFLAGS)
 cppbrowser_LDFLAGS = $(LLVM_LDFLAGS)
 cppbrowser_LDADD = $(toolbox)/libsnptools.a \
 		$(common)/libcommon.a \
