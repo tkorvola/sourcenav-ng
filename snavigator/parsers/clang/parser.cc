@@ -86,34 +86,158 @@ namespace {
 
     //TODO 
 
+    bool VisitNamespaceDecl(NamespaceDecl *);
+
+    bool VisitRecordDecl(RecordDecl *);
+
+    bool VisitCXXRecordDecl(CXXRecordDecl *);
+
+    bool VisitFieldDecl(FieldDecl *);
+
     bool VisitFunctionDecl(FunctionDecl *);
 
+    /**
+     * Return the original file name of loc.
+     * Return null if loc is not in the main file.
+     * The returned string is owned by Parser_impl.
+     */
+    const string *get_filename(SourceLocation loc) const {
+      const SourceManager &sm = ci.getSourceManager();
+      if (!sm.isInMainFile(loc))
+	return 0;
+      else
+	return &impl.orig_fname(sm.getFilename(loc));
+    }
+
+    /**
+     * Like get_filename(SourceLocation) but checks that both ends are
+     * in the main file.
+     */
+    const string *get_filename(SourceRange rng) const {
+      return (ci.getSourceManager().isInMainFile(rng.getEnd())
+	      ? get_filename(rng.getBegin()) : 0);
+    }
+
   private:
+    bool do_named_decl(int sntype, NamedDecl *, const char *cls = 0,
+		       unsigned attr = 0, bool full_range = false);
+
     const Parser_impl &impl;
     const CompilerInstance &ci;
   };
+
+  static unsigned 
+  access_attr(AccessSpecifier access)
+  {
+    switch (access) {
+      case AS_public:
+	return SN_PUBLIC;
+      case AS_protected:
+	return SN_PROTECTED;
+      case AS_private:
+	return SN_PRIVATE;
+    } 
+    return 0;
+  }
+
+  bool
+  Sn_ast_visitor::VisitNamespaceDecl(NamespaceDecl *ns)
+  {
+    // Don't know what to do with these.
+    if (ns->isAnonymousNamespace())
+      return true;
+    return do_named_decl(SN_NAMESPACE_DEF, ns);
+  }
+
+  bool
+  Sn_ast_visitor::VisitRecordDecl(RecordDecl *st)
+  {
+    if (st->isCompleteDefinition())
+      return do_named_decl(SN_CLASS_DEF, st);
+    else
+      return true;
+  }
+
+  bool
+  Sn_ast_visitor::VisitCXXRecordDecl(CXXRecordDecl *cls)
+  {
+    StringRef cname = cls->getName();
+    if (!cls->isCompleteDefinition())
+      return true;
+    const SourceManager &sm = ci.getSourceManager();
+    for (auto base = cls->bases_begin(); base != cls->bases_end(); ++base) {
+      SourceRange rng = base->getSourceRange();
+      const string *fname = get_filename(rng);
+      if (!fname)
+	continue;
+      unsigned attr = access_attr(base->getAccessSpecifier());
+      if (base->isVirtual())
+	attr |= SN_VIRTUAL;
+      unsigned
+	begin_line = sm.getExpansionLineNumber(rng.getBegin()),
+	begin_col = sm.getExpansionColumnNumber(rng.getBegin()),
+	end_line = sm.getExpansionLineNumber(rng.getEnd()),
+	end_col = sm.getExpansionColumnNumber(rng.getEnd());
+      sn_insert_symbol(
+	SN_CLASS_INHERIT, unsafe_cstr(cname),
+	unsafe_cstr(base->getType().getAsString()), unsafe_cstr(*fname),
+	begin_line, begin_col, end_line, end_col, attr, 0, 0, 0, 0,
+	begin_line, begin_col, end_line, end_col);
+    }
+    return true;
+  }
+
+  bool
+  Sn_ast_visitor::VisitFieldDecl(FieldDecl *f)
+  {
+    if (f->isAnonymousStructOrUnion())
+      return true;
+    do_named_decl(SN_MBR_VAR_DEF, f, f->getParent()->getName().str().c_str(),
+		  0, true);
+  }
 
   bool
   Sn_ast_visitor::VisitFunctionDecl(FunctionDecl *f)
   {
     DeclarationNameInfo ni = f->getNameInfo();
-    const SourceManager &sm = ci.getSourceManager();
-    if (!sm.isInMainFile(ni.getLoc()))
+    const string *fname = get_filename(ni.getLoc());
+    if (!fname)
       return true;
+    const SourceManager &sm = ci.getSourceManager();
     CXXMethodDecl *meth = dynamic_cast<CXXMethodDecl *>(f);
     bool def = f->isThisDeclarationADefinition();
     int type;
     string cls;
-    //TODO
     unsigned attr = 0;
-    string argtypes, argnames, rettype;
+    string rettype = f->getReturnType().getAsString();
+    string argtypes, argnames;
     if (meth) {
       type =  def ? SN_MBR_FUNC_DEF : SN_MBR_FUNC_DCL;
       cls = meth->getParent()->getNameAsString();
-    } else
+      attr |= access_attr(f->getAccess());
+      if (meth->isStatic())
+	attr |= SN_STATIC;
+      if (meth->isVirtual())
+	attr |= SN_VIRTUAL;
+    } else {
       type = def ? SN_FUNC_DEF : SN_FUNC_DCL;
+      if (f->getLanguageLinkage() == InternalLinkage)
+	// Gotta love the static keyword!
+	attr |= SN_STATIC;
+    }
+    for (auto it = f->parameters().begin(); it != f->parameters().end(); ++it) {
+      const ParmVarDecl &par = **it;
+      argtypes += par.getType().getAsString();
+      argtypes += ",";
+      argnames += par.getName();
+      argnames += ",";
+    }
+    if (!argtypes.empty())
+      argtypes.pop_back();
+    if (!argnames.empty())
+      argnames.pop_back();
+
     string id = ni.getAsString();
-    const string &fname = impl.orig_fname(sm.getFilename(ni.getLoc()));
     SourceLocation
       begin = ni.getSourceRange().getBegin(),
       end = ni.getSourceRange().getEnd();
@@ -124,9 +248,38 @@ namespace {
       end_col = sm.getExpansionColumnNumber(end);
     sn_insert_symbol(
       type, (meth ? unsafe_cstr(cls) : 0), unsafe_cstr(id), 
-      unsafe_cstr(fname), begin_line, begin_col, end_line, end_col, attr,
+      unsafe_cstr(*fname), begin_line, begin_col, end_line, end_col, attr,
       unsafe_cstr(rettype), unsafe_cstr(argtypes), unsafe_cstr(argnames),
       0, begin_line, begin_col, end_line, end_col);
+    return true;
+  }
+
+  bool
+  Sn_ast_visitor::do_named_decl(
+    int sntype, NamedDecl *decl, const char *cls, unsigned attr, bool full_range)
+  {
+    SourceLocation loc = decl->getLocStart();
+    const string *fname = get_filename(loc);
+    if (!fname)
+      return true;
+    attr |= access_attr(decl->getAccess());
+    const SourceManager &sm = ci.getSourceManager();
+    // Doesn't look like we can find the exact location of the name.
+    SourceLocation
+      begin = decl->getLocStart(),
+      end = full_range ? decl->getLocEnd() : decl->getLocStart();
+    unsigned
+      begin_line = sm.getExpansionLineNumber(begin),
+      begin_col = sm.getExpansionColumnNumber(begin),
+      end_line = sm.getExpansionLineNumber(end),
+      end_col = sm.getExpansionColumnNumber(end);
+    unsigned
+      line = sm.getExpansionLineNumber(loc),
+      col = sm.getExpansionColumnNumber(loc);
+    sn_insert_symbol(
+      sntype, const_cast<char *>(cls), unsafe_cstr(decl->getName()), 
+      unsafe_cstr(*fname), begin_line, begin_col, end_line, end_col, attr,
+      0, 0, 0, 0, begin_line, begin_col, end_line, end_col);
     return true;
   }
 
