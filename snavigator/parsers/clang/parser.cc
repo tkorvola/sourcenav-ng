@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include <cstdio>
+#include <unordered_map>
 
 #include <llvm/Support/Host.h>
 #include <llvm/Support/raw_ostream.h>
@@ -33,7 +34,19 @@ public:
   vector<string> files;
   vector<string> args;
 
+  unordered_map<string, unsigned> fname_map;
+
   TextDiagnosticBuffer buf;
+
+  const string &orig_fname(string &&absname) const {
+    return files[fname_map.at(absname)];
+  }
+
+  void add_file(string &&f) {
+    unsigned i = files.size();
+    files.push_back(f);
+    fname_map[f] = fname_map[getAbsolutePath(f)] = i;
+  }
 };
 
 cppbrowser::Parser::Parser():
@@ -46,7 +59,7 @@ cppbrowser::Parser::~Parser()
 void
 cppbrowser::Parser::add_file(string &&f)
 {
-  impl->files.push_back(f);
+  impl->add_file(move(f));
 }
 
 void
@@ -67,13 +80,16 @@ namespace {
   public RecursiveASTVisitor<Sn_ast_visitor>
   {
   public:
-    Sn_ast_visitor(CompilerInstance &ci): ci(ci) {}
+    Sn_ast_visitor(const Parser_impl &impl, CompilerInstance &ci):
+      impl(impl), ci(ci)
+    {}
 
     //TODO 
 
     bool VisitFunctionDecl(FunctionDecl *);
 
   private:
+    const Parser_impl &impl;
     const CompilerInstance &ci;
   };
 
@@ -97,7 +113,7 @@ namespace {
     } else
       type = def ? SN_FUNC_DEF : SN_FUNC_DCL;
     string id = ni.getAsString();
-    string fname = sm.getFilename(ni.getLoc());
+    const string &fname = impl.orig_fname(sm.getFilename(ni.getLoc()));
     SourceLocation
       begin = ni.getSourceRange().getBegin(),
       end = ni.getSourceRange().getEnd();
@@ -118,7 +134,9 @@ namespace {
   public ASTConsumer
   {
   public:
-    Sn_ast_consumer(CompilerInstance &ci): vis(ci) {}
+    Sn_ast_consumer(const Parser_impl &impl, CompilerInstance &ci):
+      vis(impl, ci)
+    {}
 
 #if 1
     // Process as we read.
@@ -147,18 +165,35 @@ namespace {
   public ASTFrontendAction
   {
   public:
+    Sn_action(const Parser_impl &impl): impl(impl) {}
+
     bool BeginSourceFileAction(CompilerInstance &ci, StringRef f) override {
       FILE *foo = 0;
-      if (!sn_register_filename(&foo,
-				const_cast<char *>(((string)f).c_str())))
+      if (!sn_register_filename(
+	    &foo, const_cast<char *>(impl.orig_fname(f).c_str())))
 	fclose(foo);
       return true;
     }
 
     ASTConsumer *
     CreateASTConsumer(CompilerInstance &ci, StringRef file) override {
-      return new Sn_ast_consumer(ci);
+      return new Sn_ast_consumer(impl, ci);
     }
+
+  private:
+    const Parser_impl &impl;
+  };
+
+  class Sn_factory:
+  public FrontendActionFactory
+  {
+  public:
+    Sn_factory(const Parser_impl &impl): impl(impl) {}
+
+    FrontendAction *create() override {return new Sn_action(impl);}
+
+  private:
+    const Parser_impl &impl;
   };
 }
 
@@ -168,10 +203,9 @@ cppbrowser::Parser::parse_all()
   FixedCompilationDatabase cdb(".", impl->args);
   ClangTool tool(cdb, impl->files);
   DiagnosticOptions dopt;
+  Sn_factory fac(*impl);
   tool.setDiagnosticConsumer(&impl->buf);
-  unique_ptr<FrontendActionFactory>
-    faf = newFrontendActionFactory<Sn_action>();
-  tool.run(faf.get());
+  tool.run(&fac);
   int nerr = impl->buf.err_end() - impl->buf.err_begin();
   return nerr;
 }
