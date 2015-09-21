@@ -75,6 +75,15 @@ unsafe_cstr(const string &str)
 }
 
 
+static const char *
+doc_comment(Decl *decl)
+{
+  const ASTContext &ctx = decl->getASTContext();
+  RawComment *doc = ctx.getRawCommentForDeclNoCache(decl);
+  return doc && doc->isDocumentation() ? doc->getBriefText(ctx) : 0;
+}
+
+
 namespace {
   class Sn_ast_visitor:
   public RecursiveASTVisitor<Sn_ast_visitor>
@@ -95,6 +104,8 @@ namespace {
     bool VisitFieldDecl(FieldDecl *);
 
     bool VisitFunctionDecl(FunctionDecl *);
+
+    bool VisitVarDecl(VarDecl *);
 
     /**
      * Return the original file name of loc.
@@ -119,8 +130,8 @@ namespace {
     }
 
   private:
-    bool do_named_decl(int sntype, NamedDecl *, const char *cls = 0,
-		       unsigned attr = 0, bool full_range = false);
+    bool do_named_decl(int sntype, NamedDecl *, bool full_range,
+		       const NamedDecl *cls = 0, unsigned attr = 0);
 
     const Parser_impl &impl;
     const CompilerInstance &ci;
@@ -146,14 +157,14 @@ namespace {
     // Don't know what to do with these.
     if (ns->isAnonymousNamespace())
       return true;
-    return do_named_decl(SN_NAMESPACE_DEF, ns);
+    return do_named_decl(SN_NAMESPACE_DEF, ns, false);
   }
 
   bool
   Sn_ast_visitor::VisitRecordDecl(RecordDecl *st)
   {
     if (st->isCompleteDefinition())
-      return do_named_decl(SN_CLASS_DEF, st);
+      return do_named_decl(SN_CLASS_DEF, st, false);
     else
       return true;
   }
@@ -192,9 +203,9 @@ namespace {
   {
     if (f->isAnonymousStructOrUnion())
       return true;
-    do_named_decl(SN_MBR_VAR_DEF, f, f->getParent()->getName().str().c_str(),
-		  0, true);
+    do_named_decl(SN_MBR_VAR_DEF, f, true, f->getParent());
   }
+
 
   bool
   Sn_ast_visitor::VisitFunctionDecl(FunctionDecl *f)
@@ -221,7 +232,7 @@ namespace {
 	attr |= SN_VIRTUAL;
     } else {
       type = def ? SN_FUNC_DEF : SN_FUNC_DCL;
-      if (f->getLanguageLinkage() == InternalLinkage)
+      if (f->getStorageClass() == SC_Static)
 	// Gotta love the static keyword!
 	attr |= SN_STATIC;
     }
@@ -250,13 +261,42 @@ namespace {
       type, (meth ? unsafe_cstr(cls) : 0), unsafe_cstr(id), 
       unsafe_cstr(*fname), begin_line, begin_col, end_line, end_col, attr,
       unsafe_cstr(rettype), unsafe_cstr(argtypes), unsafe_cstr(argnames),
-      0, begin_line, begin_col, end_line, end_col);
+      const_cast<char *>(doc_comment(f)),
+      begin_line, begin_col, end_line, end_col);
     return true;
   }
 
   bool
+  Sn_ast_visitor::VisitVarDecl(VarDecl *var)
+  {
+    int type;
+    unsigned attr;
+    NamedDecl *cls = 0;
+    DeclContext *ctx = var->getDeclContext();
+    bool def = (var->isThisDeclarationADefinition() == VarDecl::Definition);
+    if (var->isStaticDataMember()) {
+      type = SN_MBR_VAR_DEF;
+      attr |= SN_STATIC;
+      cls = static_cast<TagDecl *>(ctx);
+    } else if (var->hasGlobalStorage()) {
+      type = def ? SN_GLOB_VAR_DEF : SN_VAR_DCL;
+      if (var->isFileVarDecl())
+	attr |= SN_STATIC;
+    } else if (var->isLocalVarDecl()) {
+      type = SN_LOCAL_VAR_DEF;
+      if (var->isStaticLocal())
+	attr |= SN_STATIC;
+      //TODO: xref type
+    } else
+      return true;
+    return do_named_decl(type, var, true, cls, attr);
+  }
+
+
+  bool
   Sn_ast_visitor::do_named_decl(
-    int sntype, NamedDecl *decl, const char *cls, unsigned attr, bool full_range)
+    int sntype, NamedDecl *decl, bool full_range,
+    const NamedDecl *cls, unsigned attr)
   {
     SourceLocation loc = decl->getLocStart();
     const string *fname = get_filename(loc);
@@ -277,9 +317,11 @@ namespace {
       line = sm.getExpansionLineNumber(loc),
       col = sm.getExpansionColumnNumber(loc);
     sn_insert_symbol(
-      sntype, const_cast<char *>(cls), unsafe_cstr(decl->getName()), 
-      unsafe_cstr(*fname), begin_line, begin_col, end_line, end_col, attr,
-      0, 0, 0, 0, begin_line, begin_col, end_line, end_col);
+      sntype, cls ? unsafe_cstr(cls->getName()) : 0, 
+      unsafe_cstr(decl->getName()), unsafe_cstr(*fname),
+      begin_line, begin_col, end_line, end_col, attr,
+      0, 0, 0, const_cast<char *>(doc_comment(decl)),
+      begin_line, begin_col, end_line, end_col);
     return true;
   }
 
