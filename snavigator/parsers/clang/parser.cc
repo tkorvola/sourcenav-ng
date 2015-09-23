@@ -191,9 +191,9 @@ namespace {
 	attr |= SN_VIRTUAL;
       unsigned
 	begin_line = sm.getExpansionLineNumber(rng.getBegin()),
-	begin_col = sm.getExpansionColumnNumber(rng.getBegin()),
+	begin_col = sm.getExpansionColumnNumber(rng.getBegin()) - 1,
 	end_line = sm.getExpansionLineNumber(rng.getEnd()),
-	end_col = sm.getExpansionColumnNumber(rng.getEnd());
+	end_col = sm.getExpansionColumnNumber(rng.getEnd()) - 1;
       sn_insert_symbol(
 	SN_CLASS_INHERIT, unsafe_cstr(cname),
 	unsafe_cstr(base->getType().getAsString(pp)), unsafe_cstr(*fname),
@@ -245,9 +245,9 @@ namespace {
       end = ni.getSourceRange().getEnd();
     unsigned
       begin_line = sm.getExpansionLineNumber(begin),
-      begin_col = sm.getExpansionColumnNumber(begin),
+      begin_col = sm.getExpansionColumnNumber(begin) - 1,
       end_line = sm.getExpansionLineNumber(end),
-      end_col = sm.getExpansionColumnNumber(end);
+      end_col = sm.getExpansionColumnNumber(end) - 1;
     const char *comment = doc_comment(f);
     if (meth) {
       type =  def ? SN_MBR_FUNC_DEF : SN_MBR_FUNC_DCL;
@@ -328,12 +328,9 @@ namespace {
       end = full_range ? decl->getLocEnd() : decl->getLocStart();
     unsigned
       begin_line = sm.getExpansionLineNumber(begin),
-      begin_col = sm.getExpansionColumnNumber(begin),
+      begin_col = sm.getExpansionColumnNumber(begin) - 1,
       end_line = sm.getExpansionLineNumber(end),
-      end_col = sm.getExpansionColumnNumber(end);
-    unsigned
-      line = sm.getExpansionLineNumber(loc),
-      col = sm.getExpansionColumnNumber(loc);
+      end_col = sm.getExpansionColumnNumber(end) - 1;
     sn_insert_symbol(
       sntype, cls ? unsafe_cstr(cls->getName()) : 0, 
       unsafe_cstr(decl->getName()), unsafe_cstr(*fname),
