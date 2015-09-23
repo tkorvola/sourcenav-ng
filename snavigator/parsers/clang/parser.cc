@@ -94,7 +94,7 @@ namespace {
   {
   public:
     Sn_ast_visitor(const Parser_impl &impl, CompilerInstance &ci):
-      impl(impl), ci(ci)
+      impl(impl), ci(ci), pp(ci.getLangOpts())
     {}
 
     //TODO 
@@ -139,6 +139,7 @@ namespace {
 
     const Parser_impl &impl;
     const CompilerInstance &ci;
+    const PrintingPolicy pp;
   };
 
   static unsigned 
@@ -195,7 +196,7 @@ namespace {
 	end_col = sm.getExpansionColumnNumber(rng.getEnd());
       sn_insert_symbol(
 	SN_CLASS_INHERIT, unsafe_cstr(cname),
-	unsafe_cstr(base->getType().getAsString()), unsafe_cstr(*fname),
+	unsafe_cstr(base->getType().getAsString(pp)), unsafe_cstr(*fname),
 	begin_line, begin_col, end_line, end_col, attr, 0, 0, 0, 0,
 	begin_line, begin_col, end_line, end_col);
     }
@@ -225,7 +226,7 @@ namespace {
     int type;
     string cls;
     unsigned attr = 0;
-    string rettype = f->getReturnType().getAsString();
+    string rettype = f->getReturnType().getAsString(pp);
     string argtypes, argnames;
     if (meth) {
       type =  def ? SN_MBR_FUNC_DEF : SN_MBR_FUNC_DCL;
@@ -243,7 +244,7 @@ namespace {
     }
     for (auto it = f->parameters().begin(); it != f->parameters().end(); ++it) {
       const ParmVarDecl &par = **it;
-      argtypes += par.getType().getAsString();
+      argtypes += par.getType().getAsString(pp);
       argtypes += ",";
       argnames += par.getName();
       argnames += ",";
