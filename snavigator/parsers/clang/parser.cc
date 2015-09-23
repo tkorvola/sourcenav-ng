@@ -52,7 +52,7 @@ public:
 cppbrowser::Parser::Parser(bool all_cxx):
   impl(new Parser_impl)
 {
-  //impl->args.push_back("-std=c++11");
+  impl->args.push_back("-std=c++11");
   if (all_cxx)
     impl->args.push_back("-xc++");
 }
@@ -209,7 +209,6 @@ namespace {
     if (f->isAnonymousStructOrUnion())
       return true;
     do_named_decl(SN_MBR_VAR_DEF, f, true, f->getParent());
-    //TODO: xref type
   }
 
 
@@ -228,20 +227,6 @@ namespace {
     unsigned attr = 0;
     string rettype = f->getReturnType().getAsString(pp);
     string argtypes, argnames;
-    if (meth) {
-      type =  def ? SN_MBR_FUNC_DEF : SN_MBR_FUNC_DCL;
-      cls = meth->getParent()->getNameAsString();
-      attr |= access_attr(f->getAccess());
-      if (meth->isStatic())
-	attr |= SN_STATIC;
-      if (meth->isVirtual())
-	attr |= SN_VIRTUAL;
-    } else {
-      type = def ? SN_FUNC_DEF : SN_FUNC_DCL;
-      if (f->getStorageClass() == SC_Static)
-	// Gotta love the static keyword!
-	attr |= SN_STATIC;
-    }
     for (auto it = f->parameters().begin(); it != f->parameters().end(); ++it) {
       const ParmVarDecl &par = **it;
       argtypes += par.getType().getAsString(pp);
@@ -263,11 +248,38 @@ namespace {
       begin_col = sm.getExpansionColumnNumber(begin),
       end_line = sm.getExpansionLineNumber(end),
       end_col = sm.getExpansionColumnNumber(end);
+    const char *comment = doc_comment(f);
+    if (meth) {
+      type =  def ? SN_MBR_FUNC_DEF : SN_MBR_FUNC_DCL;
+      cls = meth->getParent()->getNameAsString();
+      attr |= access_attr(f->getAccess());
+      if (meth->isStatic())
+	attr |= SN_STATIC;
+      if (meth->isVirtual())
+	attr |= SN_VIRTUAL;
+      if (def && meth->getLexicalDeclContext()->isRecord()) {
+	// Sourcenav won't register the member unless it has a DCL.
+	// So do both.
+	sn_insert_symbol(
+	  SN_MBR_FUNC_DCL, unsafe_cstr(cls), unsafe_cstr(id),
+	  unsafe_cstr(*fname), begin_line, begin_col, end_line, end_col, attr,
+	  unsafe_cstr(rettype), unsafe_cstr(argtypes), unsafe_cstr(argnames),
+	  const_cast<char *>(comment),
+	  begin_line, begin_col, end_line, end_col);
+	// No need to repeat this.
+	comment = 0;
+      }
+    } else {
+      type = def ? SN_FUNC_DEF : SN_FUNC_DCL;
+      if (f->getStorageClass() == SC_Static)
+	// Gotta love the static keyword!
+	attr |= SN_STATIC;
+    }
     sn_insert_symbol(
-      type, (meth ? unsafe_cstr(cls) : 0), unsafe_cstr(id), 
+      type, (meth ? unsafe_cstr(cls) : 0), unsafe_cstr(id),
       unsafe_cstr(*fname), begin_line, begin_col, end_line, end_col, attr,
       unsafe_cstr(rettype), unsafe_cstr(argtypes), unsafe_cstr(argnames),
-      const_cast<char *>(doc_comment(f)),
+      const_cast<char *>(comment),
       begin_line, begin_col, end_line, end_col);
     return true;
   }
