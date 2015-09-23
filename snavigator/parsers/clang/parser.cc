@@ -49,9 +49,13 @@ public:
   }
 };
 
-cppbrowser::Parser::Parser():
+cppbrowser::Parser::Parser(bool all_cxx):
   impl(new Parser_impl)
-{}
+{
+  //impl->args.push_back("-std=c++11");
+  if (all_cxx)
+    impl->args.push_back("-xc++");
+}
 
 cppbrowser::Parser::~Parser()
 {}
@@ -204,6 +208,7 @@ namespace {
     if (f->isAnonymousStructOrUnion())
       return true;
     do_named_decl(SN_MBR_VAR_DEF, f, true, f->getParent());
+    //TODO: xref type
   }
 
 

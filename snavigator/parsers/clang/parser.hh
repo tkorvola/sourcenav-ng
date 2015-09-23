@@ -11,7 +11,7 @@ namespace cppbrowser {
   class Parser
   {
   public:
-    Parser();
+    Parser(bool all_cxx = false);
     virtual ~Parser();
 
     void add_file(std::string &&file);

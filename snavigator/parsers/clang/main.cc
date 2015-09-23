@@ -17,9 +17,10 @@ using namespace cppbrowser;
 int
 main(int argc, char **argv)
 {
-  sn_set_group("c++");
+  char foo[] = "c++";
+  sn_set_group(foo);
   sn_process_options(argc, argv);
-  Parser parser;
+  Parser parser(sn_getopt(SN_OPT_TREAT_AS_CPLUSPLUS));
   // How annoying.  I'd rather use ifstream.
   FILE *listfile = (FILE *)sn_getopt(SN_OPT_LISTFILE);
   if (listfile) {
