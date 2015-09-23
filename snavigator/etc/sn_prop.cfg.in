@@ -177,13 +177,13 @@ if {$tcl_platform(platform) == "windows"} {
 }
 sn_add_parser c++ \
 	-suffix $cpp_ext \
-	-brow_cmd $sn_path(parserdir)/cbrowser \
+	-brow_cmd $sn_path(parserdir)/cppbrowser \
 	-macros "-m"
 
 # C
 #sn_add_parser c \
 	-suffix {*.ec *.ep *.sc *.cpc} \
-	-brow_cmd $sn_path(parserdir)/cbrowser \
+	-brow_cmd $sn_path(parserdir)/cppbrowser \
 	-brow_switch "-C"
 
 # Java
