@@ -16,6 +16,9 @@
 #include <clang/AST/ASTContext.h>
 #include <clang/Tooling/CompilationDatabase.h>
 #include <clang/Tooling/Tooling.h>
+#include <clang/Lex/Preprocessor.h>
+#include <clang/Lex/PPCallbacks.h>
+#include <clang/Lex/MacroInfo.h>
 
 extern "C" {
 #include "snptools.h"
@@ -34,13 +37,38 @@ public:
   vector<string> files;
   vector<string> args;
 
-  unordered_map<string, unsigned> fname_map;
+  typedef unordered_map<string, unsigned> fname_map_type;
+  fname_map_type fname_map;
 
   TextDiagnosticBuffer buf;
 
-  const string &orig_fname(string &&absname) const {
-    return files[fname_map.at(absname)];
+  const string *orig_fname(string &&absname) const {
+    auto it = fname_map.find(absname);
+    return it != fname_map.end() ? &files[it->second] : 0;
   }
+
+  /**
+   * Return the original file name of loc.
+   * Return null if loc is not in the main file.
+   */
+  const string *get_filename(const SourceManager &sm,
+			     SourceLocation loc) const {
+    if (!sm.isInMainFile(loc))
+      return 0;
+    else
+      return orig_fname(sm.getFilename(loc));
+  }
+
+  /**
+   * Like get_filename(const SourceManager &, SourceLocation) but checks 
+   * that both ends are in the main file.
+   */
+  const string *get_filename(const SourceManager &sm,
+			     SourceRange rng) const {
+    return (sm.isInMainFile(rng.getEnd())
+	    ? get_filename(sm, rng.getBegin()) : 0);
+  }
+
 
   void add_file(string &&f) {
     unsigned i = files.size();
@@ -111,26 +139,12 @@ namespace {
 
     bool VisitVarDecl(VarDecl *);
 
-    /**
-     * Return the original file name of loc.
-     * Return null if loc is not in the main file.
-     * The returned string is owned by Parser_impl.
-     */
     const string *get_filename(SourceLocation loc) const {
-      const SourceManager &sm = ci.getSourceManager();
-      if (!sm.isInMainFile(loc))
-	return 0;
-      else
-	return &impl.orig_fname(sm.getFilename(loc));
+      return impl.get_filename(ci.getSourceManager(), loc);
     }
 
-    /**
-     * Like get_filename(SourceLocation) but checks that both ends are
-     * in the main file.
-     */
     const string *get_filename(SourceRange rng) const {
-      return (ci.getSourceManager().isInMainFile(rng.getEnd())
-	      ? get_filename(rng.getBegin()) : 0);
+      return impl.get_filename(ci.getSourceManager(), rng);
     }
 
   private:
@@ -350,9 +364,7 @@ namespace {
 
 #if 1
     // Process as we read.
-    bool
-    HandleTopLevelDecl(DeclGroupRef group) override
-    {
+    bool HandleTopLevelDecl(DeclGroupRef group) override {
       for (DeclGroupRef::iterator d = group.begin();
 	   d != group.end(); ++d)
 	vis.TraverseDecl(*d);
@@ -360,15 +372,87 @@ namespace {
     }
 #else
     // Process after the whole translation unit has been read.
-    void
-    HandleTranslationUnit(ASTContext &ctx) override
-    {
+    void HandleTranslationUnit(ASTContext &ctx) override {
       vis.TraverseDecl(ctx.getTranslationUnitDecl());
     }
 #endif
 
   private:
     Sn_ast_visitor vis;
+  };
+
+  class Sn_pp_callbacks:
+  public PPCallbacks
+  {
+  public:
+    Sn_pp_callbacks(const Parser_impl &impl, const CompilerInstance &ci):
+      impl(impl), sm(ci.getSourceManager())
+    {}
+
+    void InclusionDirective(
+      SourceLocation loc, const Token &inctok, StringRef incfname, bool angled,
+      CharSourceRange fnrange, const FileEntry *file, StringRef spath,
+      StringRef relpath, const Module *imported)
+      override
+    {
+      const string *fname = impl.get_filename(sm, loc);
+      if (fname) {
+	SourceLocation
+	  begin = fnrange.getBegin(),
+	  end = fnrange.getEnd();
+	unsigned
+	  begin_line = sm.getSpellingLineNumber(begin),
+	  begin_col = sm.getSpellingColumnNumber(begin) - 1,
+	  end_line = sm.getSpellingLineNumber(end),
+	  end_col = sm.getSpellingColumnNumber(end) - 1;
+	sn_insert_symbol(
+	  SN_INCLUDE_DEF, 0, unsafe_cstr(incfname), unsafe_cstr(*fname),
+	  begin_line, begin_col, end_line, end_col, 0, 0, 0, 0, 0,
+	  begin_line, begin_col, end_line, end_col);
+      }
+    }
+
+    void MacroDefined(const Token &mactok, const MacroDirective *md) override {
+      if (!md || md->getKind() != MacroDirective::MD_Define)
+	return;
+      const MacroInfo *mi = md->getMacroInfo();
+      SourceLocation 
+	begin = mi->getDefinitionLoc(),
+	end = mi->getDefinitionEndLoc();
+      const string *fname = impl.get_filename(sm, SourceRange(begin, end));
+      if (!fname || fname->empty())
+	return;
+      string argnames;
+      for (auto id = mi->arg_begin(); id != mi->arg_end(); ++id) {
+	argnames += (*id)->getName();
+	argnames += ",";
+      }
+      if (!argnames.empty())
+	argnames.pop_back();
+      unsigned
+	begin_line = sm.getSpellingLineNumber(begin),
+	begin_col = sm.getSpellingColumnNumber(begin) - 1,
+	end_line = sm.getSpellingLineNumber(end),
+	end_col = sm.getSpellingColumnNumber(end) - 1;
+      sn_insert_symbol(
+	SN_MACRO_DEF, 0, unsafe_cstr(mactok.getIdentifierInfo()->getName()),
+	unsafe_cstr(*fname), begin_line, begin_col, end_line, end_col,
+	0, 0, 0, unsafe_cstr(argnames), 0, begin_line, begin_col, 
+	end_line, end_col);
+    }
+
+    void MacroExpands(
+      const Token &mactok, const MacroDirective *def, SourceRange range,
+      const MacroArgs *args) 
+      override
+    {
+      /* TODO: xref.  But sn_insert_xref requires a scope type.
+	 The preprocessor cannot know that!  Maybe just put in SN_SUBR_DEF. */
+    }
+
+  private:
+    const Parser_impl &impl;
+    const SourceManager &sm;
   };
 
   class Sn_action:
@@ -379,9 +463,14 @@ namespace {
 
     bool BeginSourceFileAction(CompilerInstance &ci, StringRef f) override {
       FILE *foo = 0;
-      if (!sn_register_filename(
-	    &foo, const_cast<char *>(impl.orig_fname(f).c_str())))
+      const string *fname = impl.orig_fname(f);
+      if (!fname) {
+	cerr << "Skipping \"" << f.str() << '"' << endl;
+	return false;
+      }
+      if (!sn_register_filename(&foo, unsafe_cstr(*fname)))
 	fclose(foo);
+      ci.getPreprocessor().addPPCallbacks(new Sn_pp_callbacks(impl, ci));
       return true;
     }
 
