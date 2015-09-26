@@ -270,7 +270,7 @@ namespace {
       if (meth->isStatic())
 	attr |= SN_STATIC;
       if (meth->isVirtual())
-	attr |= SN_VIRTUAL;
+	attr |= meth->isPure() ? SN_PUREVIRTUAL : SN_VIRTUAL;
       if (def && meth->getLexicalDeclContext()->isRecord()) {
 	// Sourcenav won't register the member unless it has a DCL.
 	// So do both.
