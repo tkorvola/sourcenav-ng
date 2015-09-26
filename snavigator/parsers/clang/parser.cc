@@ -395,6 +395,8 @@ namespace {
       StringRef relpath, const Module *imported)
       override
     {
+      if (angled)
+	return;
       const string *fname = impl.get_filename(sm, loc);
       if (fname) {
 	SourceLocation
