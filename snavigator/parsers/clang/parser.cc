@@ -151,6 +151,8 @@ namespace {
     bool do_named_decl(int sntype, NamedDecl *, bool full_range,
 		       const NamedDecl *cls = 0, unsigned attr = 0);
 
+    string simple_typename(const QualType &qt);
+
     const Parser_impl &impl;
     const CompilerInstance &ci;
     const PrintingPolicy pp;
@@ -210,7 +212,7 @@ namespace {
 	end_col = sm.getExpansionColumnNumber(rng.getEnd()) - 1;
       sn_insert_symbol(
 	SN_CLASS_INHERIT, unsafe_cstr(cname),
-	unsafe_cstr(base->getType().getAsString(pp)), unsafe_cstr(*fname),
+	unsafe_cstr(simple_typename(base->getType())), unsafe_cstr(*fname),
 	begin_line, begin_col, end_line, end_col, attr, 0, 0, 0, 0,
 	begin_line, begin_col, end_line, end_col);
     }
@@ -352,6 +354,18 @@ namespace {
       0, 0, 0, const_cast<char *>(doc_comment(decl)),
       begin_line, begin_col, end_line, end_col);
     return true;
+  }
+
+  string
+  Sn_ast_visitor::simple_typename(const QualType &qt)
+  {
+    if (auto *ts = qt->getAs<TemplateSpecializationType>()) {
+      string str;
+      llvm::raw_string_ostream ostr(str);
+      ts->getTemplateName().print(ostr, pp);
+      return ostr.str();
+    } else
+      return qt.getAsString(pp);
   }
 
   class Sn_ast_consumer:
