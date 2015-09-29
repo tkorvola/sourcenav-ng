@@ -462,8 +462,18 @@ namespace {
       const MacroArgs *args) 
       override
     {
-      /* TODO: xref.  But sn_insert_xref requires a scope type.
-	 The preprocessor cannot know that!  Maybe just put in SN_SUBR_DEF. */
+      const string *fname = impl.get_filename(sm, range);
+      if (!fname)
+	return;
+      /* sn_insert_xref takes as parameter the function where the
+	 reference occurred.  The preprocessor cannot know that!
+	 So we just put in SN_SUBR_DEF and nulls. */
+      SourceLocation loc = range.getBegin();
+      unsigned line = sm.getSpellingLineNumber(loc);
+      sn_insert_xref(
+	SN_REF_TO_DEFINE, SN_SUBR_DEF, SN_REF_SCOPE_GLOBAL, 0, 0, 0, 0,
+	unsafe_cstr(mactok.getIdentifierInfo()->getName()), 0,
+	unsafe_cstr(*fname), line, SN_REF_READ);
     }
 
   private:
