@@ -465,13 +465,13 @@ namespace {
       const string *fname = impl.get_filename(sm, range);
       if (!fname)
 	return;
-      /* sn_insert_xref takes as parameter the function where the
-	 reference occurred.  The preprocessor cannot know that!
-	 So we just put in SN_SUBR_DEF and nulls. */
       SourceLocation loc = range.getBegin();
       unsigned line = sm.getSpellingLineNumber(loc);
+      /* Use of SN_GLOBAL_NAMESPACE is not documented but looks like it is
+	 supposed to work like this.  The preprocessor cannot know which
+	 function the reference is in! */
       sn_insert_xref(
-	SN_REF_TO_DEFINE, SN_SUBR_DEF, SN_REF_SCOPE_GLOBAL, 0, 0, 0, 0,
+	SN_REF_TO_DEFINE, SN_GLOBAL_NAMESPACE, SN_REF_SCOPE_GLOBAL, 0, 0, 0, 0,
 	unsafe_cstr(mactok.getIdentifierInfo()->getName()), 0,
 	unsafe_cstr(*fname), line, SN_REF_READ);
     }
