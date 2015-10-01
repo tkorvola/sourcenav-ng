@@ -12,6 +12,7 @@
 #include <clang/Frontend/TextDiagnosticBuffer.h>
 #include <clang/Frontend/TextDiagnosticPrinter.h>
 #include <clang/AST/RecursiveASTVisitor.h>
+#include <clang/AST/ParentMap.h>
 #include <clang/AST/ASTConsumer.h>
 #include <clang/AST/ASTContext.h>
 #include <clang/Tooling/CompilationDatabase.h>
@@ -139,6 +140,10 @@ namespace {
 
     bool VisitVarDecl(VarDecl *);
 
+    bool VisitCallExpr(CallExpr *);
+
+    bool VisitDeclStmt(DeclStmt *);
+
     const string *get_filename(SourceLocation loc) const {
       return impl.get_filename(ci.getSourceManager(), loc);
     }
@@ -148,14 +153,24 @@ namespace {
     }
 
   private:
-    bool do_named_decl(int sntype, NamedDecl *, bool full_range,
-		       const NamedDecl *cls = 0, unsigned attr = 0);
+    void parse_arglist(const FunctionDecl *f,
+		       string *argtypes, string *argnames = 0) const;
 
-    string simple_typename(const QualType &qt);
+    bool insert_decl(int sntype, NamedDecl *, bool full_range,
+		     const NamedDecl *cls = 0, unsigned attr = 0) const;
+
+    int xref_type(const Type &ty, Stmt *refr, SourceLocation loc) const;
+
+    int xref_decl(int snreftype, int acc, NamedDecl *tgt, Stmt *refr,
+		  SourceLocation loc, const char *argtypes = 0) const;
+
+    string simple_typename(const QualType &qt) const;
 
     const Parser_impl &impl;
     const CompilerInstance &ci;
     const PrintingPolicy pp;
+    unique_ptr<ParentMap> pm;
+    string pcls, pfun, pargtypes;
   };
 
   static unsigned 
@@ -178,14 +193,14 @@ namespace {
     // Don't know what to do with these.
     if (ns->isAnonymousNamespace())
       return true;
-    return do_named_decl(SN_NAMESPACE_DEF, ns, false);
+    return insert_decl(SN_NAMESPACE_DEF, ns, false);
   }
 
   bool
   Sn_ast_visitor::VisitRecordDecl(RecordDecl *st)
   {
     if (st->isCompleteDefinition())
-      return do_named_decl(SN_CLASS_DEF, st, false);
+      return insert_decl(SN_CLASS_DEF, st, false);
     else
       return true;
   }
@@ -224,9 +239,8 @@ namespace {
   {
     if (f->isAnonymousStructOrUnion())
       return true;
-    do_named_decl(SN_MBR_VAR_DEF, f, true, f->getParent());
+    insert_decl(SN_MBR_VAR_DEF, f, true, f->getParent());
   }
-
 
   bool
   Sn_ast_visitor::VisitFunctionDecl(FunctionDecl *f)
@@ -243,17 +257,7 @@ namespace {
     unsigned attr = 0;
     string rettype = f->getReturnType().getAsString(pp);
     string argtypes, argnames;
-    for (auto it = f->parameters().begin(); it != f->parameters().end(); ++it) {
-      const ParmVarDecl &par = **it;
-      argtypes += par.getType().getAsString(pp);
-      argtypes += ",";
-      argnames += par.getName();
-      argnames += ",";
-    }
-    if (!argtypes.empty())
-      argtypes.pop_back();
-    if (!argnames.empty())
-      argnames.pop_back();
+    parse_arglist(f, &argtypes, &argnames);
 
     string id = ni.getAsString();
     SourceLocation
@@ -297,6 +301,12 @@ namespace {
       unsafe_cstr(rettype), unsafe_cstr(argtypes), unsafe_cstr(argnames),
       const_cast<char *>(comment),
       begin_line, begin_col, end_line, end_col);
+    if (Stmt *bod = f->getBody()) {
+      pm.reset(new ParentMap(bod));
+      pcls = cls;
+      pfun = id;
+      pargtypes = argtypes;
+    }
     return true;
   }
 
@@ -320,17 +330,61 @@ namespace {
       type = SN_LOCAL_VAR_DEF;
       if (var->isStaticLocal())
 	attr |= SN_STATIC;
-      //TODO: xref type
     } else
       return true;
-    return do_named_decl(type, var, true, cls, attr);
+    return insert_decl(type, var, true, cls, attr);
   }
 
+  bool
+  Sn_ast_visitor::VisitCallExpr(CallExpr *call)
+  {
+    FunctionDecl *fun = call->getDirectCallee();
+    if (!fun)
+      return true;
+    string argtypes;
+    parse_arglist(fun, &argtypes);
+    xref_decl((dynamic_cast<CXXMethodDecl *>(fun)
+	       ? SN_REF_TO_MBR_FUNC : SN_REF_TO_FUNCTION),
+	      SN_REF_READ, fun, call, call->getCallee()->getLocStart(),
+	      argtypes.c_str());
+    return true;
+  }
 
   bool
-  Sn_ast_visitor::do_named_decl(
+  Sn_ast_visitor::VisitDeclStmt(DeclStmt *ds)
+  {
+    for (auto it = ds->decl_begin(); it != ds->decl_end(); ++it)
+      if (DeclaratorDecl *decl = dynamic_cast<DeclaratorDecl *>(*it))
+	xref_type(*decl->getType(), ds, decl->getTypeSpecStartLoc());
+  }
+
+  void
+  Sn_ast_visitor::parse_arglist(
+    const FunctionDecl *f, string *argtypes, string *argnames) const
+  {
+    argtypes->clear();
+    if (argnames)
+      argnames->clear();
+    for (auto it = f->parameters().begin(); 
+	 it != f->parameters().end(); ++it) {
+      const ParmVarDecl &par = **it;
+      *argtypes += par.getType().getAsString(pp);
+      *argtypes += ",";
+      if (argnames) {
+	*argnames += par.getName();
+	*argnames += ",";
+      }
+    }
+    if (!argtypes->empty())
+      argtypes->pop_back();
+    if (argnames && !argnames->empty())
+      argnames->pop_back();
+  }
+
+  bool
+  Sn_ast_visitor::insert_decl(
     int sntype, NamedDecl *decl, bool full_range,
-    const NamedDecl *cls, unsigned attr)
+    const NamedDecl *cls, unsigned attr) const
   {
     SourceLocation loc = decl->getLocStart();
     const string *fname = get_filename(loc);
@@ -356,8 +410,58 @@ namespace {
     return true;
   }
 
+  int
+  Sn_ast_visitor::xref_type(const Type &ty, Stmt *refr, SourceLocation loc)
+    const
+  {
+    const int acc = SN_REF_READ;
+    //C.f. QualType::getBaseTypeIdentifier.
+    if (ty.isRecordType()) {
+      RecordDecl *decl = ty.getAs<RecordType>()->getDecl();
+      return xref_decl(decl->isUnion() ? SN_REF_TO_UNION : SN_REF_TO_CLASS,
+		       acc, decl, refr, loc);
+    } else if (ty.isEnumeralType())
+      return xref_decl(SN_REF_TO_ENUM, acc, ty.getAs<EnumType>()->getDecl(),
+		       refr, loc);
+    else if (ty.getTypeClass() == Type::Typedef)
+      return xref_decl(SN_REF_TO_TYPEDEF, acc,
+		       ty.getAs<TypedefType>()->getDecl(), refr, loc);
+    else if (ty.isPointerType() || ty.isReferenceType())
+      return xref_type(*ty.getPointeeType(), refr, loc);
+    else if (ty.isArrayType())
+      return xref_type(*ty.castAsArrayTypeUnsafe()->getElementType(), 
+		       refr, loc);
+    else
+      return 0;
+  }
+
+  int
+  Sn_ast_visitor::xref_decl(
+    int snreftype, int acc, NamedDecl *decl, Stmt *refr, SourceLocation loc,
+    const char *argtypes) const
+  {
+    if (!pm || !pm->hasParent(refr))
+      return 0;
+    const string *fname = get_filename(loc);
+    if (!fname)
+      return 0;
+    bool refr_is_cls = !pcls.empty();
+    DeclContext *ctx = decl->getDeclContext();
+    int lvl = (ctx->isFunctionOrMethod()
+	       ? SN_REF_SCOPE_LOCAL : SN_REF_SCOPE_GLOBAL);
+    RecordDecl *tgt_cls = (ctx->isRecord() 
+			   ? static_cast<RecordDecl *>(ctx) : 0);
+    const SourceManager &sm = ci.getSourceManager();
+    sn_insert_xref(
+      snreftype, refr_is_cls ? SN_FUNC_DEF : SN_MBR_FUNC_DEF, lvl,
+      refr_is_cls ? unsafe_cstr(pcls) : 0, unsafe_cstr(pfun),
+      unsafe_cstr(pargtypes), tgt_cls ? unsafe_cstr(tgt_cls->getName()) : 0,
+      unsafe_cstr(decl->getName()), const_cast<char *>(argtypes),
+      unsafe_cstr(*fname), sm.getExpansionLineNumber(loc), acc);
+  }
+
   string
-  Sn_ast_visitor::simple_typename(const QualType &qt)
+  Sn_ast_visitor::simple_typename(const QualType &qt) const
   {
     if (auto *ts = qt->getAs<TemplateSpecializationType>()) {
       string str;
@@ -367,6 +471,7 @@ namespace {
     } else
       return qt.getAsString(pp);
   }
+
 
   class Sn_ast_consumer:
   public ASTConsumer
