@@ -142,6 +142,8 @@ namespace {
 
     bool VisitDeclRefExpr(DeclRefExpr *);
 
+    bool VisitMemberExpr(MemberExpr *);
+
     bool VisitDeclStmt(DeclStmt *);
 
     const string *get_filename(SourceLocation loc) const {
@@ -356,6 +358,12 @@ namespace {
       return true;
     xref_decl(sntype, argtypes ? SN_REF_READ : SN_REF_PASS, decl, expr,
               expr->getLocation(), argtypes ? argtypes->c_str() : 0);
+    return true;
+  }
+
+  bool
+  Sn_ast_visitor::VisitMemberExpr(MemberExpr *expr)
+  {
     return true;
   }
 
