@@ -174,6 +174,8 @@ namespace {
 
     int xref_type(const Type &ty, Stmt *refr, SourceLocation loc) const;
 
+    int xref_decl(NamedDecl *tgt, Stmt *refr) const;
+
     int xref_decl(int snreftype, int acc, NamedDecl *tgt, Stmt *refr,
                   SourceLocation loc, const char *argtypes = 0) const;
 
@@ -343,27 +345,14 @@ namespace {
   bool
   Sn_ast_visitor::VisitDeclRefExpr(DeclRefExpr *expr)
   {
-    ValueDecl *decl = expr->getDecl();
-    int sntype;
-    unique_ptr<string> argtypes;
-    if (auto meth = dynamic_cast<CXXMethodDecl *>(decl)) {
-      sntype = SN_REF_TO_MBR_FUNC;
-      argtypes.reset(new string);
-      parse_arglist(meth, argtypes.get());
-    } else if (auto fun = dynamic_cast<FunctionDecl *>(decl)) {
-      sntype = SN_REF_TO_FUNCTION;
-      argtypes.reset(new string);
-      parse_arglist(fun, argtypes.get());
-    } else
-      return true;
-    xref_decl(sntype, argtypes ? SN_REF_READ : SN_REF_PASS, decl, expr,
-              expr->getLocation(), argtypes ? argtypes->c_str() : 0);
+    xref_decl(expr->getDecl(), expr);
     return true;
   }
 
   bool
   Sn_ast_visitor::VisitMemberExpr(MemberExpr *expr)
   {
+    xref_decl(expr->getMemberDecl(), expr);
     return true;
   }
 
@@ -455,9 +444,29 @@ namespace {
   }
 
   int
+  Sn_ast_visitor::xref_decl(NamedDecl *decl, Stmt *refr) const
+  {
+    int sntype;
+    unique_ptr<string> argtypes;
+    if (auto meth = dynamic_cast<const CXXMethodDecl *>(decl)) {
+      sntype = SN_REF_TO_MBR_FUNC;
+      argtypes.reset(new string);
+      parse_arglist(meth, argtypes.get());
+    } else if (auto fun = dynamic_cast<const FunctionDecl *>(decl)) {
+      sntype = SN_REF_TO_FUNCTION;
+      argtypes.reset(new string);
+      parse_arglist(fun, argtypes.get());
+    } else
+      return true;
+    xref_decl(sntype, argtypes ? SN_REF_READ : SN_REF_PASS, decl, refr,
+              refr->getLocStart(), argtypes ? argtypes->c_str() : 0);
+    return true;
+  }
+
+  int
   Sn_ast_visitor::xref_decl(
-    int snreftype, int acc, NamedDecl *decl, Stmt *refr, SourceLocation loc,
-    const char *argtypes) const
+    int snreftype, int acc, NamedDecl *decl, Stmt *refr,
+    SourceLocation loc, const char *argtypes) const
   {
     if (!pm || !pm->hasParent(refr))
       return 0;
