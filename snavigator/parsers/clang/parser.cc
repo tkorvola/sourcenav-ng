@@ -140,7 +140,7 @@ namespace {
 
     bool VisitVarDecl(VarDecl *);
 
-    bool VisitCallExpr(CallExpr *);
+    bool VisitDeclRefExpr(DeclRefExpr *);
 
     bool VisitDeclStmt(DeclStmt *);
 
@@ -339,17 +339,23 @@ namespace {
   }
 
   bool
-  Sn_ast_visitor::VisitCallExpr(CallExpr *call)
+  Sn_ast_visitor::VisitDeclRefExpr(DeclRefExpr *expr)
   {
-    FunctionDecl *fun = call->getDirectCallee();
-    if (!fun)
+    ValueDecl *decl = expr->getDecl();
+    int sntype;
+    unique_ptr<string> argtypes;
+    if (auto meth = dynamic_cast<CXXMethodDecl *>(decl)) {
+      sntype = SN_REF_TO_MBR_FUNC;
+      argtypes.reset(new string);
+      parse_arglist(meth, argtypes.get());
+    } else if (auto fun = dynamic_cast<FunctionDecl *>(decl)) {
+      sntype = SN_REF_TO_FUNCTION;
+      argtypes.reset(new string);
+      parse_arglist(fun, argtypes.get());
+    } else
       return true;
-    string argtypes;
-    parse_arglist(fun, &argtypes);
-    xref_decl((dynamic_cast<CXXMethodDecl *>(fun)
-               ? SN_REF_TO_MBR_FUNC : SN_REF_TO_FUNCTION),
-              SN_REF_READ, fun, call, call->getCallee()->getLocStart(),
-              argtypes.c_str());
+    xref_decl(sntype, argtypes ? SN_REF_READ : SN_REF_PASS, decl, expr,
+              expr->getLocation(), argtypes ? argtypes->c_str() : 0);
     return true;
   }
 
