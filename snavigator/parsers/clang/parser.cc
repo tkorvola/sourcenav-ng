@@ -76,6 +76,7 @@ public:
   }
 };
 
+
 cppbrowser::Parser::Parser(bool all_cxx):
   impl(new Parser_impl)
 {
@@ -99,12 +100,12 @@ cppbrowser::Parser::add_incdir(string &&dir)
   impl->args.push_back("-I" + move(dir));
 }
 
+
 static inline char *
 unsafe_cstr(const string &str)
 {
   return const_cast<char *>(str.c_str());
 }
-
 
 static const char *
 doc_comment(Decl *decl)
@@ -112,6 +113,20 @@ doc_comment(Decl *decl)
   const ASTContext &ctx = decl->getASTContext();
   RawComment *doc = ctx.getRawCommentForDeclNoCache(decl);
   return doc && doc->isDocumentation() ? doc->getBriefText(ctx) : 0;
+}
+
+static unsigned 
+access_attr(AccessSpecifier access)
+{
+  switch (access) {
+  case AS_public:
+    return SN_PUBLIC;
+  case AS_protected:
+    return SN_PROTECTED;
+  case AS_private:
+    return SN_PRIVATE;
+  } 
+  return 0;
 }
 
 
@@ -137,6 +152,8 @@ namespace {
     bool VisitFunctionDecl(FunctionDecl *);
 
     bool VisitVarDecl(VarDecl *);
+
+    bool VisitTypedefNameDecl(TypedefNameDecl *);
 
     bool VisitDeclRefExpr(DeclRefExpr *);
 
@@ -187,20 +204,6 @@ namespace {
     const FunctionDecl *pfun;
     string pargtypes;
   };
-
-  static unsigned 
-  access_attr(AccessSpecifier access)
-  {
-    switch (access) {
-      case AS_public:
-        return SN_PUBLIC;
-      case AS_protected:
-        return SN_PROTECTED;
-      case AS_private:
-        return SN_PRIVATE;
-    } 
-    return 0;
-  }
 
   bool
   Sn_ast_visitor::VisitNamespaceDecl(NamespaceDecl *ns)
@@ -337,6 +340,20 @@ namespace {
     } else
       return true;
     insert_decl(type, var, true, cls, attr);
+    return true;
+  }
+
+  bool
+  Sn_ast_visitor::VisitTypedefNameDecl(TypedefNameDecl *tdef)
+  {
+    DeclContext *ctx = tdef->getDeclContext();
+    NamedDecl *cls = 0;
+    unsigned attr = 0;
+    if (tdef->isCXXClassMember()) {
+      cls = static_cast<TagDecl *>(ctx);
+      attr |= access_attr(tdef->getAccess());
+    }
+    insert_decl(SN_TYPE_DEF, tdef, true, cls, attr);
     return true;
   }
 
