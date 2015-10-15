@@ -43,7 +43,7 @@ public:
 
   TextDiagnosticBuffer buf;
 
-  const string *orig_fname(string &&absname) const {
+  const string *orig_fname(const string &absname) const {
     auto it = fname_map.find(absname);
     return it != fname_map.end() ? &files[it->second] : 0;
   }
@@ -70,11 +70,9 @@ public:
             ? get_filename(sm, rng.getBegin()) : 0);
   }
 
-
   void add_file(string &&f) {
-    unsigned i = files.size();
-    files.push_back(f);
-    fname_map[f] = fname_map[getAbsolutePath(f)] = i;
+    fname_map[f] = fname_map[getAbsolutePath(f)] = files.size();
+    files.push_back(move(f));
   }
 };
 
@@ -98,7 +96,7 @@ cppbrowser::Parser::add_file(string &&f)
 void
 cppbrowser::Parser::add_incdir(string &&dir)
 {
-  impl->args.push_back("-I" + dir);
+  impl->args.push_back("-I" + move(dir));
 }
 
 static inline char *
