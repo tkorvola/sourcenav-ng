@@ -180,11 +180,12 @@ namespace {
       bool comment = true) const;
 
     bool insert_decl(int sntype, NamedDecl *decl, bool full_range,
-                     const NamedDecl *cls = 0, unsigned attr = 0) const {
+                     const NamedDecl *cls = 0, unsigned attr = 0,
+                     const char *rettype = 0) const {
       return insert_decl(
         sntype, decl,
         full_range ? decl->getSourceRange() : decl->getLocStart(),
-        cls, attr);
+        cls, attr, rettype);
     }
 
     int xref_type(const Type &ty, Stmt *refr, SourceLocation loc) const;
@@ -254,7 +255,9 @@ namespace {
   Sn_ast_visitor::VisitFieldDecl(FieldDecl *f)
   {
     if (!f->isAnonymousStructOrUnion())
-      insert_decl(SN_MBR_VAR_DEF, f, true, f->getParent());
+      insert_decl(SN_MBR_VAR_DEF, f, true, f->getParent(),
+                  access_attr(f->getAccess()),
+                  f->getType().getAsString(pp).c_str());
     return true;
   }
 
@@ -296,7 +299,7 @@ namespace {
       if (def && meth->getLexicalDeclContext()->isRecord()) {
         // Sourcenav won't register the member unless it has a DCL.
         // So do both.
-        insert_decl(SN_MBR_FUNC_DCL, f, loc, cls, attr, 
+        insert_decl(SN_MBR_FUNC_DCL, f, loc, cls, attr,
                     rettype.c_str(), argtypes.c_str(), argnames.c_str());
         comment = false;
       }
@@ -339,7 +342,8 @@ namespace {
         attr |= SN_STATIC;
     } else
       return true;
-    insert_decl(type, var, true, cls, attr);
+    insert_decl(type, var, true, cls, attr,
+                var->getType().getAsString(pp).c_str());
     return true;
   }
 
@@ -349,11 +353,12 @@ namespace {
     DeclContext *ctx = tdef->getDeclContext();
     NamedDecl *cls = 0;
     unsigned attr = 0;
+    string type = tdef->getTypeSourceInfo()->getType().getAsString(pp);
     if (tdef->isCXXClassMember()) {
       cls = static_cast<TagDecl *>(ctx);
       attr |= access_attr(tdef->getAccess());
     }
-    insert_decl(SN_TYPE_DEF, tdef, true, cls, attr);
+    insert_decl(SN_TYPE_DEF, tdef, true, cls, attr, type.c_str());
     return true;
   }
 
@@ -423,7 +428,7 @@ namespace {
       end_line = sm.getExpansionLineNumber(end),
       end_col = sm.getExpansionColumnNumber(end) - 1;
     sn_insert_symbol(
-      sntype, cls ? unsafe_cstr(cls->getName()) : 0, 
+      sntype, cls ? unsafe_cstr(cls->getName()) : 0,
       unsafe_cstr(decl->getName()), unsafe_cstr(*fname),
       begin_line, begin_col, end_line, end_col, attr,
       const_cast<char *>(rettype), const_cast<char *>(argtypes),
@@ -452,7 +457,7 @@ namespace {
     else if (ty.isPointerType() || ty.isReferenceType())
       return xref_type(*ty.getPointeeType(), refr, loc);
     else if (ty.isArrayType())
-      return xref_type(*ty.castAsArrayTypeUnsafe()->getElementType(), 
+      return xref_type(*ty.castAsArrayTypeUnsafe()->getElementType(),
                        refr, loc);
     else
       return 0;
@@ -600,7 +605,7 @@ namespace {
       sn_insert_symbol(
         SN_MACRO_DEF, 0, unsafe_cstr(mactok.getIdentifierInfo()->getName()),
         unsafe_cstr(*fname), begin_line, begin_col, end_line, end_col,
-        0, 0, 0, unsafe_cstr(argnames), 0, begin_line, begin_col, 
+        0, 0, 0, unsafe_cstr(argnames), 0, begin_line, begin_col,
         end_line, end_col);
     }
 
