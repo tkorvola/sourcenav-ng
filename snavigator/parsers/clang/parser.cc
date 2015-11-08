@@ -287,7 +287,7 @@ namespace {
       end_line = sm.getExpansionLineNumber(end),
       end_col = sm.getExpansionColumnNumber(end) - 1;
     bool comment = true;
-    if (CXXMethodDecl *meth = dynamic_cast<CXXMethodDecl *>(f)) {
+    if (auto meth = dynamic_cast<CXXMethodDecl *>(f)) {
       type =  def ? SN_MBR_FUNC_DEF : SN_MBR_FUNC_DCL;
       cls = meth->getParent();
       attr |= access_attr(f->getAccess());
@@ -383,7 +383,7 @@ namespace {
   Sn_ast_visitor::VisitDeclStmt(DeclStmt *ds)
   {
     for (auto it = ds->decl_begin(); it != ds->decl_end(); ++it)
-      if (DeclaratorDecl *decl = dynamic_cast<DeclaratorDecl *>(*it))
+      if (auto decl = dynamic_cast<DeclaratorDecl *>(*it))
         xref_type(*decl->getType(), ds, decl->getTypeSpecStartLoc());
   }
 
