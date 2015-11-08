@@ -270,7 +270,6 @@ namespace {
     if (!fname)
       return true;
     const SourceManager &sm = ci.getSourceManager();
-    CXXMethodDecl *meth = dynamic_cast<CXXMethodDecl *>(f);
     bool def = f->isThisDeclarationADefinition();
     int type;
     CXXRecordDecl *cls = 0;
@@ -288,10 +287,14 @@ namespace {
       end_line = sm.getExpansionLineNumber(end),
       end_col = sm.getExpansionColumnNumber(end) - 1;
     bool comment = true;
-    if (meth) {
+    if (CXXMethodDecl *meth = dynamic_cast<CXXMethodDecl *>(f)) {
       type =  def ? SN_MBR_FUNC_DEF : SN_MBR_FUNC_DCL;
       cls = meth->getParent();
       attr |= access_attr(f->getAccess());
+      if (dynamic_cast<CXXConstructorDecl *>(meth))
+        attr |= SN_CONSTRUCTOR;
+      else if (dynamic_cast<CXXDestructorDecl *>(meth))
+        attr |= SN_DESTRUCTOR;
       if (meth->isStatic())
         attr |= SN_STATIC;
       if (meth->isVirtual())
@@ -416,6 +419,7 @@ namespace {
     const string *fname = get_filename(loc);
     if (!fname)
       return true;
+    string name = decl->getDeclName().getAsString();
     attr |= access_attr(decl->getAccess());
     const SourceManager &sm = ci.getSourceManager();
     // Doesn't look like we can find the exact location of the name.
@@ -427,9 +431,10 @@ namespace {
       begin_col = sm.getExpansionColumnNumber(begin) - 1,
       end_line = sm.getExpansionLineNumber(end),
       end_col = sm.getExpansionColumnNumber(end) - 1;
+
     sn_insert_symbol(
       sntype, cls ? unsafe_cstr(cls->getName()) : 0,
-      unsafe_cstr(decl->getName()), unsafe_cstr(*fname),
+      unsafe_cstr(name), unsafe_cstr(*fname),
       begin_line, begin_col, end_line, end_col, attr,
       const_cast<char *>(rettype), const_cast<char *>(argtypes),
       const_cast<char *>(argnames),
