@@ -30,7 +30,7 @@ font.tcl grep.tcl help.tcl highlight.tcl history.tcl html.tcl \
 i18n.tcl ide.tcl sninit.tcl ipc.tcl \
 misc.tcl panewd.tcl paths.tcl printdialog.tcl \
 rcs.tcl selector.tcl text.tcl utilities.tcl version.tcl \
-history.tcl retriever.tcl statistics.tcl \
+retriever.tcl statistics.tcl \
 multiview.tcl multichild.tcl classpane.tcl classtreepane.tcl \
 editorpane.tcl snpdbg.tcl symbolbrowser.tcl includepane.tcl xrefpane.tcl \
 retrieverpane.tcl greppane.tcl makepane.tcl preferences.tcl tools.tcl \
