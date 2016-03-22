@@ -7,6 +7,7 @@
 
 #include <llvm/Support/Host.h>
 #include <llvm/Support/raw_ostream.h>
+#include <llvm/ADT/STLExtras.h>
 #include <clang/Basic/TargetInfo.h>
 #include <clang/Frontend/CompilerInstance.h>
 #include <clang/Frontend/TextDiagnosticBuffer.h>
@@ -30,8 +31,11 @@ extern "C" {
 using namespace std;
 using namespace clang;
 using namespace clang::tooling;
+// Replace with std::make_unique once c++14 is common enough.
+using llvm::make_unique;
 
 using namespace cppbrowser;
+
 
 class cppbrowser::Parser_impl {
 public:
@@ -653,13 +657,14 @@ namespace {
       }
       if (!sn_register_filename(&foo, unsafe_cstr(*fname)))
         fclose(foo);
-      ci.getPreprocessor().addPPCallbacks(new Sn_pp_callbacks(impl, ci));
+      ci.getPreprocessor().addPPCallbacks(
+        make_unique<Sn_pp_callbacks>(impl, ci));
       return true;
     }
 
-    ASTConsumer *
+    unique_ptr<ASTConsumer>
     CreateASTConsumer(CompilerInstance &ci, StringRef file) override {
-      return new Sn_ast_consumer(impl, ci);
+      return make_unique<Sn_ast_consumer>(impl, ci);
     }
 
   private:
