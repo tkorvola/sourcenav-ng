@@ -4,7 +4,9 @@ toolbox = $(top_builddir)/../toolbox
 common = $(top_builddir)/../common
 libutils = $(top_builddir)/../../misc/libutils
 
-libexec_PROGRAMS = cppbrowser
+# snavigator/configure.ac modifies libexecdir but it does not propagate here.
+snlibexecdir = $(exec_prefix)/libexec/snavigator
+snlibexec_PROGRAMS = cppbrowser
 
 AM_CPPFLAGS = $(WINFLAGS) \
 	-I$(top_srcdir)/../../hyper \
