@@ -619,7 +619,7 @@ namespace {
     }
 
     void MacroExpands(
-      const Token &mactok, const MacroDirective *def, SourceRange range,
+      const Token &mactok, const MacroDefinition &def, SourceRange range,
       const MacroArgs *args) 
       override
     {
