@@ -22,8 +22,7 @@ main(int argc, char **argv)
   sn_process_options(argc, argv);
   Parser parser(sn_getopt(SN_OPT_TREAT_AS_CPLUSPLUS));
   // How annoying.  I'd rather use ifstream.
-  FILE *listfile = (FILE *)sn_getopt(SN_OPT_LISTFILE);
-  if (listfile) {
+  if (auto listfile = (FILE *)sn_getopt(SN_OPT_LISTFILE)) {
     char fname[512];
     while (fgets(fname, sizeof(fname), listfile)) {
       char *lf = strchr(fname, '\n');

@@ -129,8 +129,9 @@ access_attr(AccessSpecifier access)
     return SN_PROTECTED;
   case AS_private:
     return SN_PRIVATE;
+  default:
+    return 0;
   } 
-  return 0;
 }
 
 
@@ -192,12 +193,12 @@ namespace {
         cls, attr, rettype);
     }
 
-    int xref_type(const Type &ty, Stmt *refr, SourceLocation loc) const;
+    bool xref_type(const Type &ty, Stmt *refr, SourceLocation loc) const;
 
-    int xref_decl(NamedDecl *tgt, Stmt *refr) const;
+    bool xref_decl(NamedDecl *tgt, Stmt *refr) const;
 
-    int xref_decl(int snreftype, int acc, NamedDecl *tgt, Stmt *refr,
-                  SourceLocation loc, const char *argtypes = 0) const;
+    bool xref_decl(int snreftype, int acc, NamedDecl *tgt, Stmt *refr,
+                   SourceLocation loc, const char *argtypes = 0) const;
 
     string simple_typename(const QualType &qt) const;
 
@@ -273,7 +274,6 @@ namespace {
     const string *fname = get_filename(ni.getLoc());
     if (!fname)
       return true;
-    const SourceManager &sm = ci.getSourceManager();
     bool def = f->isThisDeclarationADefinition();
     int type;
     CXXRecordDecl *cls = 0;
@@ -282,14 +282,6 @@ namespace {
     string argtypes, argnames;
     parse_arglist(f, &argtypes, &argnames);
 
-    SourceLocation
-      begin = ni.getSourceRange().getBegin(),
-      end = ni.getSourceRange().getEnd();
-    unsigned
-      begin_line = sm.getExpansionLineNumber(begin),
-      begin_col = sm.getExpansionColumnNumber(begin) - 1,
-      end_line = sm.getExpansionLineNumber(end),
-      end_col = sm.getExpansionColumnNumber(end) - 1;
     bool comment = true;
     if (auto meth = dynamic_cast<CXXMethodDecl *>(f)) {
       type =  def ? SN_MBR_FUNC_DEF : SN_MBR_FUNC_DCL;
@@ -331,7 +323,7 @@ namespace {
   Sn_ast_visitor::VisitVarDecl(VarDecl *var)
   {
     int type;
-    unsigned attr;
+    unsigned attr = 0;
     NamedDecl *cls = 0;
     DeclContext *ctx = var->getDeclContext();
     bool def = (var->isThisDeclarationADefinition() == VarDecl::Definition);
@@ -389,6 +381,7 @@ namespace {
     for (auto it = ds->decl_begin(); it != ds->decl_end(); ++it)
       if (auto decl = dynamic_cast<DeclaratorDecl *>(*it))
         xref_type(*decl->getType(), ds, decl->getTypeSpecStartLoc());
+    return true;
   }
 
   void
@@ -436,7 +429,7 @@ namespace {
       end_line = sm.getExpansionLineNumber(end),
       end_col = sm.getExpansionColumnNumber(end) - 1;
 
-    sn_insert_symbol(
+    return !sn_insert_symbol(
       sntype, cls ? unsafe_cstr(cls->getName()) : 0,
       unsafe_cstr(name), unsafe_cstr(*fname),
       begin_line, begin_col, end_line, end_col, attr,
@@ -444,10 +437,9 @@ namespace {
       const_cast<char *>(argnames),
       comment ? const_cast<char *>(doc_comment(decl)) : 0,
       begin_line, begin_col, end_line, end_col);
-    return true;
   }
 
-  int
+  bool
   Sn_ast_visitor::xref_type(const Type &ty, Stmt *refr, SourceLocation loc)
     const
   {
@@ -469,10 +461,10 @@ namespace {
       return xref_type(*ty.castAsArrayTypeUnsafe()->getElementType(),
                        refr, loc);
     else
-      return 0;
+      return true;
   }
 
-  int
+  bool
   Sn_ast_visitor::xref_decl(NamedDecl *decl, Stmt *refr) const
   {
     int sntype;
@@ -487,28 +479,27 @@ namespace {
       parse_arglist(fun, argtypes.get());
     } else
       return true;
-    xref_decl(sntype, argtypes ? SN_REF_READ : SN_REF_PASS, decl, refr,
-              refr->getLocStart(), argtypes ? argtypes->c_str() : 0);
-    return true;
+    return xref_decl(sntype, argtypes ? SN_REF_READ : SN_REF_PASS, decl, refr,
+                     refr->getLocStart(), argtypes ? argtypes->c_str() : 0);
   }
 
-  int
+  bool
   Sn_ast_visitor::xref_decl(
     int snreftype, int acc, NamedDecl *decl, Stmt *refr,
     SourceLocation loc, const char *argtypes) const
   {
     if (!pm || !pm->hasParent(refr))
-      return 0;
+      return true;
     const string *fname = get_filename(loc);
     if (!fname)
-      return 0;
+      return true;
     DeclContext *ctx = decl->getDeclContext();
     int lvl = (ctx->isFunctionOrMethod()
                ? SN_REF_SCOPE_LOCAL : SN_REF_SCOPE_GLOBAL);
     RecordDecl *tgt_cls = (ctx->isRecord() 
                            ? static_cast<RecordDecl *>(ctx) : 0);
     const SourceManager &sm = ci.getSourceManager();
-    sn_insert_xref(
+    return !sn_insert_xref(
       snreftype, pcls ? SN_MBR_FUNC_DEF : SN_FUNC_DEF, lvl,
       pcls ? unsafe_cstr(pcls->getName()) : 0, unsafe_cstr(pfun->getName()),
       unsafe_cstr(pargtypes), tgt_cls ? unsafe_cstr(tgt_cls->getName()) : 0,
