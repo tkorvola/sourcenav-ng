@@ -205,10 +205,10 @@ namespace {
     const Parser_impl &impl;
     const CompilerInstance &ci;
     const PrintingPolicy pp;
-    unique_ptr<ParentMap> pm;
-    const CXXRecordDecl *pcls;
-    const FunctionDecl *pfun;
-    string pargtypes;
+    SourceRange in_rng;
+    const CXXRecordDecl *in_cls;
+    const FunctionDecl *in_fun;
+    string in_argtypes;
   };
 
   bool
@@ -310,11 +310,11 @@ namespace {
     }
     insert_decl(type, f, loc, cls, attr,
                 rettype.c_str(), argtypes.c_str(), argnames.c_str(), comment);
-    if (Stmt *bod = f->getBody()) {
-      pm.reset(new ParentMap(bod));
-      pcls = cls;
-      pfun = f;
-      pargtypes = argtypes;
+    if (f->hasBody()) {
+      in_cls = cls;
+      in_fun = f;
+      in_argtypes = move(argtypes);
+      in_rng = f->getSourceRange();
     }
     return true;
   }
@@ -488,7 +488,10 @@ namespace {
     int snreftype, int acc, NamedDecl *decl, Stmt *refr,
     SourceLocation loc, const char *argtypes) const
   {
-    if (!pm || !pm->hasParent(refr))
+    const SourceManager &sm = ci.getSourceManager();
+    if (!in_fun
+        || sm.isBeforeInSLocAddrSpace(loc, in_rng.getBegin())
+        || !sm.isBeforeInSLocAddrSpace(loc, in_rng.getEnd()))
       return true;
     const string *fname = get_filename(loc);
     if (!fname)
@@ -498,12 +501,14 @@ namespace {
                ? SN_REF_SCOPE_LOCAL : SN_REF_SCOPE_GLOBAL);
     RecordDecl *tgt_cls = (ctx->isRecord() 
                            ? static_cast<RecordDecl *>(ctx) : 0);
-    const SourceManager &sm = ci.getSourceManager();
     return !sn_insert_xref(
-      snreftype, pcls ? SN_MBR_FUNC_DEF : SN_FUNC_DEF, lvl,
-      pcls ? unsafe_cstr(pcls->getName()) : 0, unsafe_cstr(pfun->getName()),
-      unsafe_cstr(pargtypes), tgt_cls ? unsafe_cstr(tgt_cls->getName()) : 0,
-      unsafe_cstr(decl->getName()), const_cast<char *>(argtypes),
+      snreftype, in_cls ? SN_MBR_FUNC_DEF : SN_FUNC_DEF, lvl,
+      in_cls ? unsafe_cstr(in_cls->getName()) : 0,
+      unsafe_cstr(in_fun->getDeclName().getAsString()),
+      unsafe_cstr(in_argtypes),
+      tgt_cls ? unsafe_cstr(tgt_cls->getName()) : 0,
+      unsafe_cstr(decl->getDeclName().getAsString()),
+      const_cast<char *>(argtypes),
       unsafe_cstr(*fname), sm.getExpansionLineNumber(loc), acc);
   }
 
