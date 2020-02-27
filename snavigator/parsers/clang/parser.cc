@@ -39,14 +39,6 @@ using namespace cppbrowser;
 
 class cppbrowser::Parser_impl {
 public:
-  vector<string> files;
-  vector<string> args;
-
-  typedef unordered_map<string, unsigned> fname_map_type;
-  fname_map_type fname_map;
-
-  TextDiagnosticBuffer buf;
-
   const string *orig_fname(const string &absname) const {
     auto it = fname_map.find(absname);
     return it != fname_map.end() ? &files[it->second] : 0;
@@ -78,6 +70,16 @@ public:
     fname_map[f] = fname_map[getAbsolutePath(f)] = files.size();
     files.push_back(move(f));
   }
+
+  TextDiagnosticBuffer buf;
+
+private:
+  vector<string> files;
+  vector<string> args;
+
+  typedef unordered_map<string, unsigned> fname_map_type;
+  fname_map_type fname_map;
+friend class Parser;
 };
 
 
@@ -189,7 +191,7 @@ namespace {
                      const char *rettype = 0) const {
       return insert_decl(
         sntype, decl,
-        full_range ? decl->getSourceRange() : decl->getLocStart(),
+        full_range ? decl->getSourceRange() : decl->getBeginLoc(),
         cls, attr, rettype);
     }
 
@@ -480,7 +482,7 @@ namespace {
     } else
       return true;
     return xref_decl(sntype, argtypes ? SN_REF_READ : SN_REF_PASS, decl, refr,
-                     refr->getLocStart(), argtypes ? argtypes->c_str() : 0);
+                     refr->getBeginLoc(), argtypes ? argtypes->c_str() : 0);
   }
 
   bool
@@ -563,7 +565,8 @@ namespace {
     void InclusionDirective(
       SourceLocation loc, const Token &inctok, StringRef incfname, bool angled,
       CharSourceRange fnrange, const FileEntry *file, StringRef spath,
-      StringRef relpath, const Module *imported)
+      StringRef relpath, const Module *imported,
+      SrcMgr::CharacteristicKind ftype)
       override
     {
       if (angled)
@@ -596,7 +599,7 @@ namespace {
       if (!fname || fname->empty())
         return;
       string argnames;
-      for (auto id = mi->arg_begin(); id != mi->arg_end(); ++id) {
+      for (auto id = mi->param_begin(); id != mi->param_end(); ++id) {
         argnames += (*id)->getName();
         argnames += ",";
       }
@@ -644,8 +647,9 @@ namespace {
   public:
     Sn_action(const Parser_impl &impl): impl(impl) {}
 
-    bool BeginSourceFileAction(CompilerInstance &ci, StringRef f) override {
+    bool BeginSourceFileAction(CompilerInstance &ci) override {
       FILE *foo = 0;
+      StringRef f = getCurrentFile();
       const string *fname = impl.orig_fname(f);
       if (!fname) {
         cerr << "Skipping \"" << f.str() << '"' << endl;
@@ -689,6 +693,7 @@ cppbrowser::Parser::parse_all()
   Sn_factory fac(*impl);
   tool.setDiagnosticConsumer(&impl->buf);
   tool.run(&fac);
-  int nerr = impl->buf.err_end() - impl->buf.err_begin();
-  return nerr;
+  for (auto it = impl->buf.err_begin(); it != impl->buf.err_end(); ++it)
+    sn_error("%s\n", it->second.c_str());
+  return impl->buf.getNumErrors();
 }

@@ -14,12 +14,7 @@ AM_CPPFLAGS = $(WINFLAGS) \
 	-I$(top_srcdir)/../common \
 	-I$(top_srcdir)/../..
 
-CLANG_LIBS = -lclangTooling -lclangFrontendTool -lclangFrontend \
-	-lclangDriver -lclangSerialization -lclangCodeGen -lclangParse \
-	-lclangSema -lclangStaticAnalyzerFrontend \
-	-lclangStaticAnalyzerCheckers -lclangStaticAnalyzerCore \
-	-lclangAnalysis -lclangARCMigrate -lclangRewrite \
-	-lclangRewriteFrontend -lclangEdit -lclangAST -lclangLex -lclangBasic
+CLANG_LIBS = -lclang-cpp
 
 cppbrowser_SOURCES = main.cc parser.cc
 cppbrowser_CXXFLAGS = -std=c++11 $(LLVM_CXXFLAGS)
