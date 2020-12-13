@@ -32,7 +32,7 @@ using namespace std;
 using namespace clang;
 using namespace clang::tooling;
 // Replace with std::make_unique once c++14 is common enough.
-using llvm::make_unique;
+// using llvm::make_unique;
 
 using namespace cppbrowser;
 
@@ -42,6 +42,10 @@ public:
   const string *orig_fname(const string &absname) const {
     auto it = fname_map.find(absname);
     return it != fname_map.end() ? &files[it->second] : 0;
+  }
+
+  const string *orig_fname(StringRef absname) const {
+    return orig_fname(absname.str());
   }
 
   /**
@@ -86,7 +90,7 @@ friend class Parser;
 cppbrowser::Parser::Parser(bool all_cxx):
   impl(new Parser_impl)
 {
-  impl->args.push_back("-std=c++11");
+  //impl->args.push_back("-std=c++11");
   if (all_cxx)
     impl->args.push_back("-xc++");
 }
@@ -250,7 +254,7 @@ namespace {
         end_line = sm.getExpansionLineNumber(rng.getEnd()),
         end_col = sm.getExpansionColumnNumber(rng.getEnd()) - 1;
       sn_insert_symbol(
-        SN_CLASS_INHERIT, unsafe_cstr(cname),
+        SN_CLASS_INHERIT, unsafe_cstr(cname.str()),
         unsafe_cstr(simple_typename(base->getType())), unsafe_cstr(*fname),
         begin_line, begin_col, end_line, end_col, attr, 0, 0, 0, 0,
         begin_line, begin_col, end_line, end_col);
@@ -432,7 +436,7 @@ namespace {
       end_col = sm.getExpansionColumnNumber(end) - 1;
 
     return !sn_insert_symbol(
-      sntype, cls ? unsafe_cstr(cls->getName()) : 0,
+      sntype, cls ? unsafe_cstr(cls->getName().str()) : 0,
       unsafe_cstr(name), unsafe_cstr(*fname),
       begin_line, begin_col, end_line, end_col, attr,
       const_cast<char *>(rettype), const_cast<char *>(argtypes),
@@ -505,10 +509,10 @@ namespace {
                            ? static_cast<RecordDecl *>(ctx) : 0);
     return !sn_insert_xref(
       snreftype, in_cls ? SN_MBR_FUNC_DEF : SN_FUNC_DEF, lvl,
-      in_cls ? unsafe_cstr(in_cls->getName()) : 0,
+      in_cls ? unsafe_cstr(in_cls->getName().str()) : 0,
       unsafe_cstr(in_fun->getDeclName().getAsString()),
       unsafe_cstr(in_argtypes),
-      tgt_cls ? unsafe_cstr(tgt_cls->getName()) : 0,
+      tgt_cls ? unsafe_cstr(tgt_cls->getName().str()) : 0,
       unsafe_cstr(decl->getDeclName().getAsString()),
       const_cast<char *>(argtypes),
       unsafe_cstr(*fname), sm.getExpansionLineNumber(loc), acc);
@@ -582,7 +586,7 @@ namespace {
           end_line = sm.getSpellingLineNumber(end),
           end_col = sm.getSpellingColumnNumber(end) - 1;
         sn_insert_symbol(
-          SN_INCLUDE_DEF, 0, unsafe_cstr(incfname), unsafe_cstr(*fname),
+          SN_INCLUDE_DEF, 0, unsafe_cstr(incfname.str()), unsafe_cstr(*fname),
           begin_line, begin_col, end_line, end_col, 0, 0, 0, 0, 0,
           begin_line, begin_col, end_line, end_col);
       }
@@ -611,7 +615,8 @@ namespace {
         end_line = sm.getSpellingLineNumber(end),
         end_col = sm.getSpellingColumnNumber(end) - 1;
       sn_insert_symbol(
-        SN_MACRO_DEF, 0, unsafe_cstr(mactok.getIdentifierInfo()->getName()),
+        SN_MACRO_DEF, 0,
+        unsafe_cstr(mactok.getIdentifierInfo()->getName().str()),
         unsafe_cstr(*fname), begin_line, begin_col, end_line, end_col,
         0, 0, 0, unsafe_cstr(argnames), 0, begin_line, begin_col,
         end_line, end_col);
@@ -632,7 +637,7 @@ namespace {
          function the reference is in! */
       sn_insert_xref(
         SN_REF_TO_DEFINE, SN_GLOBAL_NAMESPACE, SN_REF_SCOPE_GLOBAL, 0, 0, 0, 0,
-        unsafe_cstr(mactok.getIdentifierInfo()->getName()), 0,
+        unsafe_cstr(mactok.getIdentifierInfo()->getName().str()), 0,
         unsafe_cstr(*fname), line, SN_REF_READ);
     }
 
@@ -677,7 +682,9 @@ namespace {
   public:
     Sn_factory(const Parser_impl &impl): impl(impl) {}
 
-    FrontendAction *create() override {return new Sn_action(impl);}
+    unique_ptr<FrontendAction> create() override {
+      return make_unique<Sn_action>(impl);
+    }
 
   private:
     const Parser_impl &impl;

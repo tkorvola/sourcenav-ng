@@ -12,8 +12,7 @@ CYG_AC_LOAD_TCLCONFIG
 AC_SUBST(TCL_BUILD_LIB_SPEC)
 AC_SUBST(TCL_LIBS)
 
-dnl llvm-config --cxxflags prints crap like -O2.
-LLVM_CXXFLAGS="`llvm-config --cppflags`"
+LLVM_CXXFLAGS="`llvm-config --cxxflags`"
 LLVM_LDFLAGS="`llvm-config --ldflags`"
 LLVM_LIBS="`llvm-config --libs`"
 AC_SUBST([LLVM_CXXFLAGS])
