@@ -33,7 +33,7 @@ MA 02111-1307, USA.
 #include "sn.h"
 
 static SearchTable *pbtrMacro;
-int (*Paf_Word)(char *word,int len,char **parameter_list,char **macro);
+extern int (*Paf_Word)(char *word,int len,char **parameter_list,char **macro);
 static int paf_word( char *word, int len, char **parameter_list, char **macro );
 
 typedef struct sMacro sMacro_t, *Macro_t;
